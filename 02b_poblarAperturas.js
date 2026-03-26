@@ -163,10 +163,10 @@
  * @param {boolean} [options.force]      — true: limpia y reescribe. Default: false
  */
 function poblarAperturas(options) {
-  var opts     = options || {cohortCode: 'MR26'};
-  var force    = opts.force === true;
-  var filtro   = opts.cohortCode || null;
-  var inicio   = Date.now();
+  var opts = options || { cohortCode: 'MR26' };
+  var force = opts.force === true;
+  var filtro = opts.cohortCode || null;
+  var inicio = Date.now();
   var ejecutor = Session.getEffectiveUser().getEmail();
 
   // LockService: previene condición de carrera en ejecuciones force concurrentes.
@@ -198,7 +198,7 @@ function poblarAperturas(options) {
     }
 
     var coreSS = getSpreadsheetByName("core");
-    var hoja   = coreSS.getSheetByName("APERTURA_PLAN");
+    var hoja = coreSS.getSheetByName("APERTURA_PLAN");
 
     if (!hoja) {
       throw new Error(
@@ -227,18 +227,18 @@ function poblarAperturas(options) {
     }
 
     var aRegistrar = filtro
-      ? plan.filter(function(a) { return a.cohortCode === filtro; })
+      ? plan.filter(function (a) { return a.cohortCode === filtro; })
       : plan;
 
     if (aRegistrar.length === 0) {
       // FIX-AUDIT C-3: diferenciar "cohorte no en plan" de "array plan vacío"
-      var todosLosCodes = plan.map(function(a) { return a.cohortCode; });
+      var todosLosCodes = plan.map(function (a) { return a.cohortCode; });
       var cohorteEnPlan = filtro && todosLosCodes.indexOf(filtro) !== -1;
       Logger.log("⚠️  No hay aperturas para: " + (filtro || "todos"));
       if (filtro && !cohorteEnPlan) {
         Logger.log("   → El cohorte '" + filtro + "' NO está definido en obtenerPlanDeAperturas_().");
         Logger.log("   → Agregar el bloque del cohorte en este archivo antes de re-ejecutar.");
-        Logger.log("   → Cohortes activos en el plan: [" + todosLosCodes.filter(function(c, i) {
+        Logger.log("   → Cohortes activos en el plan: [" + todosLosCodes.filter(function (c, i) {
           return todosLosCodes.indexOf(c) === i; // únicos
         }).join(", ") + "]");
       } else {
@@ -248,12 +248,12 @@ function poblarAperturas(options) {
     }
 
     // ── PASO 4: Construir filas nuevas en memoria (sin API) ───────────────────
-    var ahora       = nowSIDEP();
+    var ahora = nowSIDEP();
     var nuevasFilas = [];
-    var omitidas    = 0;
-    var sinCodigo   = [];
+    var omitidas = 0;
+    var sinCodigo = [];
 
-    aRegistrar.forEach(function(a) {
+    aRegistrar.forEach(function (a) {
       // Validar campos obligatorios antes de intentar registrar
       if (!a.cohortCode || !a.momentCode || !a.subjectCode || !a.programCode) {
         sinCodigo.push(JSON.stringify(a));
@@ -292,7 +292,7 @@ function poblarAperturas(options) {
     // Informar materias con datos incompletos antes de escribir
     if (sinCodigo.length > 0) {
       Logger.log("  ⚠️  " + sinCodigo.length + " entradas con campos vacíos — omitidas:");
-      sinCodigo.forEach(function(s) { Logger.log("     " + s); });
+      sinCodigo.forEach(function (s) { Logger.log("     " + s); });
     }
 
     if (nuevasFilas.length === 0 && !force) {
@@ -315,7 +315,7 @@ function poblarAperturas(options) {
       filasAConservar = filasExistentes;
     } else if (filtro) {
       // FORCE con cohorte: conservar los OTROS cohortes, reemplazar el indicado
-      filasAConservar = filasExistentes.filter(function(row) {
+      filasAConservar = filasExistentes.filter(function (row) {
         return row[1] !== filtro; // columna 1 = CohortCode
       });
       Logger.log("  📊 Filas conservadas (otros cohortes): " + filasAConservar.length);
@@ -339,7 +339,7 @@ function poblarAperturas(options) {
     Logger.log("   Con errores         : " + sinCodigo.length);
     Logger.log("   Total en tabla      : " + filasFinales.length);
     Logger.log("⏭  SIGUIENTE: planificarDesdeAperturaPlan({ cohortCode: '" +
-               (filtro || "XX26") + "', momentCode: '...' }) en 04_crearAulas_v2.gs");
+      (filtro || "XX26") + "', momentCode: '...' }) en 04_crearAulas_v2.gs");
     Logger.log("════════════════════════════════════════════════");
 
   } catch (e) {
@@ -415,30 +415,46 @@ function obtenerPlanDeAperturas_() {
   //   TRV → MAT (compartida) | TRV → HIA (compartida)
   // ══════════════════════════════════════════════════════════
 
-  plan.push({ cohortCode:"MR26", momentCode:"C1M2", subjectCode:"SPC", programCode:"CTB",
-              isTransversal:false, notes:"Soportes Contables — malla oficial C1M2" });
+  plan.push({
+    cohortCode: "MR26", momentCode: "C1M2", subjectCode: "SPC", programCode: "CTB",
+    isTransversal: false, notes: "Soportes Contables — malla oficial C1M2"
+  });
 
-  plan.push({ cohortCode:"MR26", momentCode:"C1M2", subjectCode:"HID", programCode:"ADM",
-              isTransversal:false, notes:"Herramientas Informáticas — malla oficial C1M2" });
+  plan.push({
+    cohortCode: "MR26", momentCode: "C1M2", subjectCode: "HID", programCode: "ADM",
+    isTransversal: false, notes: "Herramientas Informáticas — malla oficial C1M2"
+  });
 
-  plan.push({ cohortCode:"MR26", momentCode:"C1M2", subjectCode:"FOT", programCode:"TLC",
-              isTransversal:false, notes:"Fibra Óptica — malla oficial C1M2" });
+  plan.push({
+    cohortCode: "MR26", momentCode: "C1M2", subjectCode: "FOT", programCode: "TLC",
+    isTransversal: false, notes: "Fibra Óptica — malla oficial C1M2"
+  });
 
-  plan.push({ cohortCode:"MR26", momentCode:"C1M2", subjectCode:"EXC", programCode:"SIS",
-              isTransversal:false, notes:"Excel — malla oficial C1M2" });
+  plan.push({
+    cohortCode: "MR26", momentCode: "C1M2", subjectCode: "EXC", programCode: "SIS",
+    isTransversal: false, notes: "Excel — malla oficial C1M2"
+  });
 
-  plan.push({ cohortCode:"MR26", momentCode:"C1M2", subjectCode:"CRC", programCode:"MKT",
-              isTransversal:false, notes:"Cultura Creatividad — malla oficial C1M2" });
+  plan.push({
+    cohortCode: "MR26", momentCode: "C1M2", subjectCode: "CRC", programCode: "MKT",
+    isTransversal: false, notes: "Cultura Creatividad — malla oficial C1M2"
+  });
 
-  plan.push({ cohortCode:"MR26", momentCode:"C1M2", subjectCode:"FDR", programCode:"SST",
-              isTransversal:false, notes:"Factores de Riesgo — malla oficial C1M2" });
+  plan.push({
+    cohortCode: "MR26", momentCode: "C1M2", subjectCode: "FDR", programCode: "SST",
+    isTransversal: false, notes: "Factores de Riesgo — malla oficial C1M2"
+  });
 
   // Transversales MR26: UNA sola aula compartida por todos los programas
-  plan.push({ cohortCode:"MR26", momentCode:"C1M2", subjectCode:"MAT", programCode:"TRV",
-              isTransversal:true, notes:"Matemáticas Básicas — 1 aula compartida todos los programas" });
+  plan.push({
+    cohortCode: "MR26", momentCode: "C1M2", subjectCode: "MAT", programCode: "TRV",
+    isTransversal: true, notes: "Matemáticas Básicas — 1 aula compartida todos los programas"
+  });
 
-  plan.push({ cohortCode:"MR26", momentCode:"C1M2", subjectCode:"HIA", programCode:"TRV",
-              isTransversal:true, notes:"Herramientas IA — 1 aula compartida todos los programas" });
+  plan.push({
+    cohortCode: "MR26", momentCode: "C1M2", subjectCode: "HIA", programCode: "TRV",
+    isTransversal: true, notes: "Herramientas IA — 1 aula compartida todos los programas"
+  });
 
 
   // ══════════════════════════════════════════════════════════
@@ -476,6 +492,27 @@ function obtenerPlanDeAperturas_() {
   plan.push({ cohortCode:"EN26", momentCode:"C2M1", subjectCode:"PVE", programCode:"TRV",
               isTransversal:true,  notes:"Proyecto de Vida — 1 aula compartida todos los programas" });
   */
+
+
+  // ══════════════════════════════════════════════════════════
+  // AB26 — A1B2 (Abre 7 de abr 2026 - Articulados)
+  //
+  // Estado: PENDIENTE DE CONFIRMACIÓN DE MATERIAS
+  // Descomentar y completar los SubjectCode / ProgramCode a abrir,
+  // según defina Carlos para los colegios articulados.
+  //
+  // NOTA ARQUITECTURAL: 
+  //   Para aperturas individuales sin editar este array, usar:
+  //   agregar_('AB26', 'A1B2', 'SPC', 'CTB', false, 'Apertura normal AB26/A1B2')
+  // ══════════════════════════════════════════════════════════
+
+  /*
+  plan.push({ cohortCode:"AB26", momentCode:"A1B2", subjectCode:"XXX", programCode:"YYY",
+              isTransversal:false, notes:"Materia específica de articulados AB26" });
+  plan.push({ cohortCode:"AB26", momentCode:"A1B2", subjectCode:"ZZZ", programCode:"TRV",
+              isTransversal:true, notes:"Materia transversal compartida" });
+  */
+
 
 
   // ══════════════════════════════════════════════════════════
@@ -532,11 +569,11 @@ function leerTodasLasFilas_(hoja) {
  */
 function construirMapaIdempotencia_(filas) {
   var mapa = {};
-  filas.forEach(function(row) {
-    var cohort  = row[1]; // CohortCode
+  filas.forEach(function (row) {
+    var cohort = row[1]; // CohortCode
     var momento = row[2]; // MomentCode
     var materia = row[3]; // SubjectCode
-    var prog    = row[4]; // ProgramCode
+    var prog = row[4]; // ProgramCode
     // Solo indexar filas con los 4 campos de clave completos y no vacíos
     if (cohort && momento && materia && prog) {
       mapa[cohort + "_" + momento + "_" + materia + "_" + prog] = true;
@@ -572,7 +609,7 @@ function escribirHojaCompleta_(hoja, filasFinales) {
   // Paso 2: escribir todas las filas en una sola llamada
   if (filasFinales.length > 0) {
     hoja.getRange(2, 1, filasFinales.length, filasFinales[0].length)
-        .setValues(filasFinales);
+      .setValues(filasFinales);
   }
 
   Logger.log("    💾 APERTURA_PLAN → " + filasFinales.length + " filas escritas en batch");
@@ -593,10 +630,10 @@ function escribirHojaCompleta_(hoja, filasFinales) {
  */
 function buscarFila_(filas, cohortCode, momentCode, subjectCode, programCode) {
   for (var i = 0; i < filas.length; i++) {
-    if (filas[i][1] === cohortCode  &&
-        filas[i][2] === momentCode  &&
-        filas[i][3] === subjectCode &&
-        filas[i][4] === programCode) {
+    if (filas[i][1] === cohortCode &&
+      filas[i][2] === momentCode &&
+      filas[i][3] === subjectCode &&
+      filas[i][4] === programCode) {
       return i;
     }
   }
@@ -697,23 +734,23 @@ function buscarFila_(filas, cohortCode, momentCode, subjectCode, programCode) {
  * @param {string}  opts.notes              — OBLIGATORIO en CANCELAR, REEMPLAZAR, REACTIVAR
  */
 function gestionarApertura(opts) {
-  var options   = opts || {};
-  var accion    = (options.accion || '').toUpperCase();
-  var cohort    = options.cohortCode;
-  var momento   = options.momentCode;
-  var subject   = options.subjectCode;
-  var prog      = options.programCode;
-  var notes     = options.notes || '';
-  var isTRV     = options.isTransversal === true;
-  var ahora     = nowSIDEP();
-  var ejecutor  = Session.getEffectiveUser().getEmail();
-  var inicio    = Date.now();
+  var options = opts || {};
+  var accion = (options.accion || '').toUpperCase();
+  var cohort = options.cohortCode;
+  var momento = options.momentCode;
+  var subject = options.subjectCode;
+  var prog = options.programCode;
+  var notes = options.notes || '';
+  var isTRV = options.isTransversal === true;
+  var ahora = nowSIDEP();
+  var ejecutor = Session.getEffectiveUser().getEmail();
+  var inicio = Date.now();
 
   Logger.log('════════════════════════════════════════════════');
   Logger.log('✏️  SIDEP — gestionarApertura v1.2');
   Logger.log('   Ejecutor : ' + ejecutor);
   Logger.log('   Acción   : ' + accion);
-  Logger.log('   Cohorte  : ' + cohort  + ' · ' + momento);
+  Logger.log('   Cohorte  : ' + cohort + ' · ' + momento);
   Logger.log('   Materia  : ' + subject + ' (' + prog + ')');
   Logger.log('   Notes    : ' + (notes || '(vacío)'));
   Logger.log('════════════════════════════════════════════════');
@@ -769,8 +806,8 @@ function gestionarApertura(opts) {
   Logger.log('  🔐 Lock adquirido');
 
   try {
-    var coreSS  = getSpreadsheetByName('core');
-    var hoja    = coreSS.getSheetByName('APERTURA_PLAN');
+    var coreSS = getSpreadsheetByName('core');
+    var hoja = coreSS.getSheetByName('APERTURA_PLAN');
 
     if (!hoja) {
       throw new Error(
@@ -811,11 +848,11 @@ function gestionarApertura(opts) {
         }
         if (statusActualVal === 'CREADA') {
           Logger.log('  ⚠️  La apertura ya fue procesada (CREADA). ' +
-                     'El aula ya existe en MasterDeployments. ' +
-                     'Cancelar solo afecta APERTURA_PLAN — el aula en Classroom ' +
-                     'debe archivarse manualmente si es necesario.');
+            'El aula ya existe en MasterDeployments. ' +
+            'Cancelar solo afecta APERTURA_PLAN — el aula en Classroom ' +
+            'debe archivarse manualmente si es necesario.');
         }
-        filas[idx][6]  = 'CANCELADA';
+        filas[idx][6] = 'CANCELADA';
         filas[idx][10] = notes;    // Notes
         filas[idx][13] = ahora;    // UpdatedAt
         filas[idx][14] = ejecutor; // UpdatedBy
@@ -828,7 +865,7 @@ function gestionarApertura(opts) {
             'Estado actual: ' + statusActualVal
           );
         }
-        filas[idx][6]  = 'PENDIENTE';
+        filas[idx][6] = 'PENDIENTE';
         filas[idx][10] = notes + ' [REACTIVADA por ' + ejecutor + ']';
         filas[idx][13] = ahora;
         filas[idx][14] = ejecutor;
@@ -851,9 +888,9 @@ function gestionarApertura(opts) {
         }
         // Si estaba CANCELADA, reactivar en lugar de duplicar
         Logger.log('  ℹ️  Apertura CANCELADA existente — reactivando en lugar de duplicar.');
-        filas[idxExistente][6]  = 'PENDIENTE';
+        filas[idxExistente][6] = 'PENDIENTE';
         filas[idxExistente][10] = (notes || 'Reactivada vía AGREGAR') +
-                                   ' [por ' + ejecutor + ']';
+          ' [por ' + ejecutor + ']';
         filas[idxExistente][13] = ahora;
         filas[idxExistente][14] = ejecutor;
         accionesRealizadas.push('REACTIVADA (era CANCELADA): ' + subject + ' (' + prog + ')');
@@ -883,7 +920,7 @@ function gestionarApertura(opts) {
     } else if (accion === 'REEMPLAZAR') {
       // ── Parte 1: Cancelar la materia anterior ──────────────────────────────
       var subjAnterior = options.subjectCodeAnterior;
-      var idxAnterior  = buscarFila_(filas, cohort, momento, subjAnterior, prog);
+      var idxAnterior = buscarFila_(filas, cohort, momento, subjAnterior, prog);
 
       if (idxAnterior === -1) {
         throw new Error(
@@ -893,7 +930,7 @@ function gestionarApertura(opts) {
         );
       }
 
-      filas[idxAnterior][6]  = 'CANCELADA';
+      filas[idxAnterior][6] = 'CANCELADA';
       filas[idxAnterior][10] = 'REEMPLAZADA por ' + subject + '. ' + notes;
       filas[idxAnterior][13] = ahora;
       filas[idxAnterior][14] = ejecutor;
@@ -909,7 +946,7 @@ function gestionarApertura(opts) {
       }
       // Si existía CANCELADA, reactivar; si no existía, crear nueva
       if (idxNueva !== -1) {
-        filas[idxNueva][6]  = 'PENDIENTE';
+        filas[idxNueva][6] = 'PENDIENTE';
         filas[idxNueva][10] = 'Reemplaza ' + subjAnterior + '. ' + notes;
         filas[idxNueva][13] = ahora;
         filas[idxNueva][14] = ejecutor;
@@ -932,7 +969,7 @@ function gestionarApertura(opts) {
     var dur = ((Date.now() - inicio) / 1000).toFixed(1);
     Logger.log('════════════════════════════════════════════════');
     Logger.log('✅ gestionarApertura completado en ' + dur + 's');
-    accionesRealizadas.forEach(function(a) { Logger.log('   → ' + a); });
+    accionesRealizadas.forEach(function (a) { Logger.log('   → ' + a); });
     Logger.log('   Ejecutor : ' + ejecutor);
     Logger.log('   Timestamp: ' + Utilities.formatDate(ahora, 'America/Bogota', 'yyyy-MM-dd HH:mm'));
     if (accion === 'CANCELAR' || accion === 'REEMPLAZAR') {
@@ -940,7 +977,7 @@ function gestionarApertura(opts) {
     }
     if (accion === 'AGREGAR' || accion === 'REEMPLAZAR') {
       Logger.log('⏭  SIGUIENTE: planificarDesdeAperturaPlan({ cohortCode: \'' +
-                 cohort + '\', momentCode: \'' + momento + '\' })');
+        cohort + '\', momentCode: \'' + momento + '\' })');
     }
     Logger.log('════════════════════════════════════════════════');
 
@@ -972,12 +1009,12 @@ function gestionarApertura(opts) {
  */
 function cancelar_(cohortCode, momentCode, subjectCode, programCode, notes) {
   gestionarApertura({
-    accion:      'CANCELAR',
-    cohortCode:  cohortCode,
-    momentCode:  momentCode,
+    accion: 'CANCELAR',
+    cohortCode: cohortCode,
+    momentCode: momentCode,
     subjectCode: subjectCode,
     programCode: programCode,
-    notes:       notes
+    notes: notes
   });
 }
 
@@ -995,13 +1032,13 @@ function cancelar_(cohortCode, momentCode, subjectCode, programCode, notes) {
  */
 function agregar_(cohortCode, momentCode, subjectCode, programCode, isTransversal, notes) {
   gestionarApertura({
-    accion:        'AGREGAR',
-    cohortCode:    cohortCode,
-    momentCode:    momentCode,
-    subjectCode:   subjectCode,
-    programCode:   programCode,
+    accion: 'AGREGAR',
+    cohortCode: cohortCode,
+    momentCode: momentCode,
+    subjectCode: subjectCode,
+    programCode: programCode,
     isTransversal: isTransversal === true,
-    notes:         notes || ''
+    notes: notes || ''
   });
 }
 
@@ -1019,16 +1056,16 @@ function agregar_(cohortCode, momentCode, subjectCode, programCode, isTransversa
  * @param {string}  notes               — OBLIGATORIO: razón del reemplazo
  */
 function reemplazar_(cohortCode, momentCode, programCode,
-                     subjectCodeAnterior, subjectCode, isTransversal, notes) {
+  subjectCodeAnterior, subjectCode, isTransversal, notes) {
   gestionarApertura({
-    accion:              'REEMPLAZAR',
-    cohortCode:          cohortCode,
-    momentCode:          momentCode,
-    programCode:         programCode,
+    accion: 'REEMPLAZAR',
+    cohortCode: cohortCode,
+    momentCode: momentCode,
+    programCode: programCode,
     subjectCodeAnterior: subjectCodeAnterior,
-    subjectCode:         subjectCode,
-    isTransversal:       isTransversal === true,
-    notes:               notes
+    subjectCode: subjectCode,
+    isTransversal: isTransversal === true,
+    notes: notes
   });
 }
 
@@ -1051,7 +1088,7 @@ function diagnosticoAperturas() {
 
   try {
     var coreSS = getSpreadsheetByName('core');
-    var hoja   = coreSS.getSheetByName('APERTURA_PLAN');
+    var hoja = coreSS.getSheetByName('APERTURA_PLAN');
 
     if (!hoja || hoja.getLastRow() <= 1) {
       Logger.log('⬜ APERTURA_PLAN vacía — ejecutar poblarAperturas() primero.');
@@ -1062,15 +1099,15 @@ function diagnosticoAperturas() {
 
     // Agrupar por cohorte → momento → estado
     var resumen = {};
-    filas.forEach(function(row) {
-      var cohort  = row[1];  // CohortCode
+    filas.forEach(function (row) {
+      var cohort = row[1];  // CohortCode
       var momento = row[2];  // MomentCode
       var subject = row[3];  // SubjectCode
-      var prog    = row[4];  // ProgramCode
-      var status  = row[6];  // AperturaStatus
-      var notes   = row[10]; // Notes
-      var updBy   = row[14]; // UpdatedBy
-      var updAt   = row[13]; // UpdatedAt
+      var prog = row[4];  // ProgramCode
+      var status = row[6];  // AperturaStatus
+      var notes = row[10]; // Notes
+      var updBy = row[14]; // UpdatedBy
+      var updAt = row[13]; // UpdatedAt
 
       var key = cohort + '_' + momento;
       if (!resumen[key]) resumen[key] = { PENDIENTE: [], CREADA: [], CANCELADA: [] };
@@ -1081,20 +1118,20 @@ function diagnosticoAperturas() {
       resumen[key][status].push(entrada);
     });
 
-    Object.keys(resumen).sort().forEach(function(key) {
+    Object.keys(resumen).sort().forEach(function (key) {
       var g = resumen[key];
       Logger.log('\n📋 ' + key.replace('_', ' · '));
-      if ((g.PENDIENTE  || []).length) {
+      if ((g.PENDIENTE || []).length) {
         Logger.log('   ⬜ PENDIENTE  (' + g.PENDIENTE.length + '):');
-        g.PENDIENTE.forEach(function(e) { Logger.log('      ' + e); });
+        g.PENDIENTE.forEach(function (e) { Logger.log('      ' + e); });
       }
-      if ((g.CREADA     || []).length) {
+      if ((g.CREADA || []).length) {
         Logger.log('   ✅ CREADA     (' + g.CREADA.length + '):');
-        g.CREADA.forEach(function(e) { Logger.log('      ' + e); });
+        g.CREADA.forEach(function (e) { Logger.log('      ' + e); });
       }
-      if ((g.CANCELADA  || []).length) {
+      if ((g.CANCELADA || []).length) {
         Logger.log('   ❌ CANCELADA  (' + g.CANCELADA.length + '):');
-        g.CANCELADA.forEach(function(e) { Logger.log('      ' + e); });
+        g.CANCELADA.forEach(function (e) { Logger.log('      ' + e); });
       }
     });
 
