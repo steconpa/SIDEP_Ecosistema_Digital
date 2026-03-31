@@ -24,6 +24,7 @@
  *   uuid(prefix)                                 → ID prefijado legible
  *   aplicarFormatosAutomaticos_(ss, tables)      → formatos batch por convención
  *   aplicarFormatosHoja_(hoja, cols)             → formatos en una hoja
+ *   getTableData(fileKey, tableName)             → lee tabla completa con índice de columnas
  *   escribirDatos(ss, tableName, rows)           → escritura batch sin rollback
  *   escribirDatosSeguro(ss, tableName, rows)     → escritura batch CON rollback
  *   registrarTablasSheetsAPI_(ss, tables, force) → registra hojas como Tablas nativas
@@ -342,6 +343,47 @@ function escribirDatosSeguro(ss, tableName, rows) {
     );
   }
 }
+
+/**
+ * Lee una tabla del ecosistema con índice de columnas listo para usar.
+ *
+ * Wrapper público de _leerHoja_() que incluye la resolución del Spreadsheet.
+ * Elimina el patrón repetido en los scripts operacionales:
+ *
+ *   // Antes — patrón repetido en 8+ scripts:
+ *   const ss      = getSpreadsheetByName("core");
+ *   const hoja    = ss.getSheetByName("MasterDeployments");
+ *   const headers = hoja.getRange(1, 1, 1, hoja.getLastColumn()).getValues()[0];
+ *   const iNom    = headers.indexOf("GeneratedNomenclature");
+ *   // …acceso: datos[i][iNom]
+ *
+ *   // Ahora:
+ *   const { datos, idx } = getTableData("core", "MasterDeployments");
+ *   // …acceso: datos[i][idx["GeneratedNomenclature"]]
+ *
+ * @param {string} fileKey   — "core" | "admin" | "bi"
+ * @param {string} tableName — nombre de la hoja (ej: "MasterDeployments")
+ * @returns {{ ss, hoja, encabezado, datos, idx }}
+ *   ss         — Spreadsheet del ecosistema
+ *   hoja       — Sheet correspondiente
+ *   encabezado — array de nombres de columnas (fila 1)
+ *   datos      — array de arrays con filas de datos (sin encabezado)
+ *   idx        — { colName: colIndex } — acceso O(1) por nombre de columna
+ * @throws {Error} si fileKey es inválido o la tabla no existe en el Spreadsheet
+ */
+function getTableData(fileKey, tableName) {
+  const ss   = getSpreadsheetByName(fileKey);
+  const hoja = ss.getSheetByName(tableName);
+  if (!hoja) {
+    throw new Error(
+      "getTableData: tabla '" + tableName + "' no encontrada en '" + fileKey + "'. " +
+      "¿Ejecutaste setupSidepTables()?"
+    );
+  }
+  const mem = _leerHoja_(hoja);
+  return { ss: ss, hoja: hoja, encabezado: mem.encabezado, datos: mem.datos, idx: mem.idx };
+}
+
 
 /**
  * Lee una hoja completa en memoria con índice de columnas por nombre.
