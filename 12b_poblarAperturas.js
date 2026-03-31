@@ -90,9 +90,15 @@
  *   Con lock: B espera a que A termine antes de ejecutar.
  *   Modo SAFE (default): no requiere lock — solo hace appends.
  *
- * VERSIÓN: 1.2
+ * VERSIÓN: 1.3
  * AUTOR: Stevens Contreras
- * FECHA: 2026-03-14
+ * FECHA: 2026-03-31
+ *
+ * CAMBIOS v1.3 vs v1.2:
+ *   - NUEVO: opts.planExterno — permite pasar el plan desde STAGING_APERTURAS
+ *     en lugar de obtenerPlanDeAperturas_(). Backward-compatible: si no se pasa,
+ *     funciona exactamente igual que v1.2.
+ *     12b_staging_aperturas.gs v1.0 usa este parámetro vía iniciarAperturaDesdeStaging_().
  *
  * CAMBIOS v1.2 vs v1.1:
  *   - NUEVO: gestionarApertura(opts) — función pública para modificar
@@ -159,8 +165,10 @@
  *   paso2b_aperturas_force('MR26') → FORCE via 99_orquestador.gs
  *
  * @param {Object}  options
- * @param {string}  [options.cohortCode] — filtrar por cohorte (omitir = todos)
- * @param {boolean} [options.force]      — true: limpia y reescribe. Default: false
+ * @param {string}  [options.cohortCode]  — filtrar por cohorte (omitir = todos)
+ * @param {boolean} [options.force]       — true: limpia y reescribe. Default: false
+ * @param {Array}   [options.planExterno] — plan desde STAGING (12b_staging_aperturas.gs).
+ *                                          Si se omite, usa obtenerPlanDeAperturas_().
  */
 function poblarAperturas(options) {
   var opts = options || { cohortCode: 'MR26' };
@@ -215,15 +223,23 @@ function poblarAperturas(options) {
     // ── PASO 2: Construir mapa de idempotencia en memoria (sin API) ───────────
     var existentes = construirMapaIdempotencia_(filasExistentes);
 
-    // ── PASO 3: Obtener plan de aperturas y filtrar ───────────────────────────
+    // ── PASO 3: Obtener plan de aperturas y filtrar ──────────────────────────
+    // v1.3: soporta planExterno (desde SIDEP_STAGING_APERTURAS)
+    //       o el plan hardcodeado (obtenerPlanDeAperturas_()) como fallback.
+    //       Backward-compatible: si no se pasa planExterno, funciona igual que v1.2.
     var plan;
-    try {
-      plan = obtenerPlanDeAperturas_();
-    } catch (e) {
-      throw new Error(
-        "Error en obtenerPlanDeAperturas_(): " + e.message + "\n" +
-        "Verificar sintaxis del plan de aperturas en este archivo."
-      );
+    if (opts.planExterno && Array.isArray(opts.planExterno) && opts.planExterno.length > 0) {
+      plan = opts.planExterno;
+      Logger.log("  📥 Plan recibido desde staging (" + plan.length + " apertura(s))");
+    } else {
+      try {
+        plan = obtenerPlanDeAperturas_();
+      } catch (e) {
+        throw new Error(
+          "Error en obtenerPlanDeAperturas_(): " + e.message + "\n" +
+          "Verificar sintaxis del plan de aperturas en este archivo."
+        );
+      }
     }
 
     var aRegistrar = filtro

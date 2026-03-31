@@ -54,6 +54,13 @@
  *   │  Cambios por período:                               │
  *   │  → paso2b_cambios_MR26_C1M2() 7 cambios Carlos MR26  │
  *   ├─────────────────────────────────────────────────────┤
+ *   │  STAGING — APERTURA DESDE SHEET (nuevo flujo)       │
+ *   │  → paso_staging_configurar()  setup 1 vez           │
+ *   │  → paso_staging_trigger()     instalar trigger 1 vez │
+ *   │  → paso_staging_limpiarTrigger() eliminar trigger   │
+ *   │  → paso_staging_dropdowns()   refrescar listas      │
+ *   │  → paso_staging_diagnostico() estado del staging    │
+ *   ├─────────────────────────────────────────────────────┤
  *   │  PASO 4 — AULAS CLASSROOM (por ventana/cohort)      │
  *   │  PREREQUISITO: paso2b ejecutado primero             │
  *   │  → paso4_dryRun(cohort, moment)  preview            │
@@ -107,6 +114,16 @@
  *   2. Agregar la entrada en el array `pasos` de onboardingCompleto()
  *      solo si el paso es seguro sin opciones (muchos requieren cohortCode).
  *   3. Actualizar el bloque ASCII de FUNCIONES DISPONIBLES arriba.
+ *
+ * CAMBIOS v2.4 vs v2.3:
+ *   - NUEVO: sección STAGING APERTURAS — flujo de apertura desde Google Sheets.
+ *     paso_staging_configurar(): crea SIDEP_STAGING_APERTURAS con formato y dropdowns.
+ *     paso_staging_trigger(): instala onOpen para que Carlos vea el menú SIDEP.
+ *     paso_staging_limpiarTrigger(): elimina trigger (para reinstalar limpio).
+ *     paso_staging_dropdowns(): refresca listas desde _CFG_COHORTS y _CFG_SUBJECTS.
+ *     paso_staging_diagnostico(): estado del staging sin modificar nada.
+ *     paso_staging_probar_AB26(): prueba directa desde el editor para AB26.
+ *   - Actualizado FUNCIONES DISPONIBLES: refleja sección STAGING completa.
  *
  * CAMBIOS v2.3 vs v2.2:
  *   - NUEVO: sección PASO 6 — importar docentes (wrapper de importarDocentes()).
@@ -510,6 +527,80 @@ function paso2b_cambios_MR26_C1M2() {
   // Verificar resultado final
   Logger.log("\n▶ Estado de APERTURA_PLAN tras los 9 cambios:");
   diagnosticoAperturas();
+}
+
+
+// ── STAGING APERTURAS — atajos del orquestador ───────────────────────────────
+//
+// FLUJO DE SETUP (ejecutar en orden, una sola vez):
+//   1. paso_staging_configurar()   → crea y formatea SIDEP_STAGING_APERTURAS
+//   2. paso_staging_trigger()      → instala onOpen (menú aparece para Carlos)
+//   3. Compartir el SS con Carlos desde Google Drive
+//
+// FLUJO POR PERÍODO (Carlos ejecuta desde el sheet):
+//   → Carlos completa el staging → SIDEP → Iniciar apertura
+//   → El script llama poblarAperturas({ planExterno }) internamente
+//
+// MANTENIMIENTO:
+//   paso_staging_dropdowns()       → refrescar listas después de nuevos cohortes/materias
+//   paso_staging_diagnostico()     → ver estado del staging desde el editor
+
+/**
+ * SETUP PASO 1 — Crear y configurar SIDEP_STAGING_APERTURAS.
+ * Ejecutar UNA SOLA VEZ. Idempotente: seguro de re-ejecutar para refrescar formato.
+ */
+function paso_staging_configurar() {
+  Logger.log("▶ STAGING SETUP 1/2: Configurando SIDEP_STAGING_APERTURAS...");
+  configurarStagingAperturas();
+}
+
+/**
+ * SETUP PASO 2 — Instalar trigger onOpen en el staging.
+ * Ejecutar UNA SOLA VEZ después de paso_staging_configurar().
+ * Después: compartir el SS con Carlos desde Google Drive.
+ */
+function paso_staging_trigger() {
+  Logger.log("▶ STAGING SETUP 2/2: Instalando trigger onOpen...");
+  instalarTriggerStaging();
+}
+
+/**
+ * Eliminar trigger onOpen del staging (para reinstalar limpio).
+ * Usar si hay triggers duplicados.
+ */
+function paso_staging_limpiarTrigger() {
+  Logger.log("▶ STAGING: Eliminando trigger onOpen...");
+  limpiarTriggerStaging();
+}
+
+/**
+ * Refrescar dropdowns del staging desde _CFG_COHORTS y _CFG_SUBJECTS.
+ * Ejecutar cuando se agreguen nuevos cohortes o materias al sistema.
+ */
+function paso_staging_dropdowns() {
+  Logger.log("▶ STAGING: Actualizando dropdowns desde catálogos...");
+  actualizarDropdownsStaging_();
+}
+
+/**
+ * Ver estado del staging desde el editor GAS.
+ * Solo lectura — no modifica nada.
+ */
+function paso_staging_diagnostico() {
+  Logger.log("▶ STAGING: Diagnóstico...");
+  diagnosticoStaging_();
+}
+
+/**
+ * PRUEBA — Ejecutar apertura AB26 directamente desde el editor,
+ * sin pasar por el menú del staging. Útil para testing.
+ * PRERREQUISITO: tener datos en SIDEP_STAGING_APERTURAS filas 3+.
+ */
+function paso_staging_probar_AB26() {
+  Logger.log("▶ STAGING PRUEBA: Ejecutando iniciarAperturaDesdeStaging_ para AB26...");
+  Logger.log("   ⚠️  Esta función muestra alertas de UI — ejecutar desde el staging SS,");
+  Logger.log("   no desde el editor, para ver los diálogos de confirmación.");
+  iniciarAperturaDesdeStaging_();
 }
 
 
