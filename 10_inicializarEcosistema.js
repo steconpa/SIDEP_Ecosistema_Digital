@@ -1,7 +1,7 @@
 /**
  * ============================================================
  * SIDEP ECOSISTEMA DIGITAL
- * Archivo: 00b_inicializarEcosistema.gs
+ * Archivo: 10_inicializarEcosistema.gs
  * Versión: 1.1
  * ============================================================
  *

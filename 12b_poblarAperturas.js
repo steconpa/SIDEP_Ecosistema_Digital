@@ -1,7 +1,7 @@
 /**
  * ============================================================
  * SIDEP ECOSISTEMA DIGITAL — Proyecto Google Apps Script
- * Archivo: 02b_poblarAperturas.gs
+ * Archivo: 12b_poblarAperturas.gs
  * Versión: 1.1
  * ============================================================
  *
@@ -33,7 +33,7 @@
  *   00_SIDEP_CONFIG.gs v4.0.0+ → APERTURA_PLAN en CORE_TABLES,
  *                                  getSpreadsheetByName(), nowSIDEP(),
  *                                  escribirDatos()
- *   01_setupSidepTables.gs     → tabla APERTURA_PLAN debe existir.
+ *   11_setupSidepTables.gs     → tabla APERTURA_PLAN debe existir.
  *                                  Si no existe: setupSidepTables() primero.
  *
  * NO DEPENDE DE:

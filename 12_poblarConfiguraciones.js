@@ -1,7 +1,7 @@
 /**
  * ============================================================
  * SIDEP ECOSISTEMA DIGITAL
- * Archivo: 02_poblarConfiguraciones.gs
+ * Archivo: 12_poblarConfiguraciones.gs
  * Versión: 2.0
  * ============================================================
  *
@@ -12,7 +12,7 @@
  *
  * DEPENDE DE:
  *   00_SIDEP_CONFIG.gs v3.6.1+  → getSpreadsheetByName(), escribirDatos()
- *   01_setupSidepTables.gs      → debe haberse ejecutado primero (crea las hojas)
+ *   11_setupSidepTables.gs      → debe haberse ejecutado primero (crea las hojas)
  *
  * USO DIRECTO:
  *   poblarConfiguraciones()              — SAFE: salta tablas que ya tienen datos

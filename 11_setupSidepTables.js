@@ -1,7 +1,7 @@
 /**
  * ============================================================
  * SIDEP ECOSISTEMA DIGITAL
- * Archivo: 01_setupSidepTables.gs
+ * Archivo: 11_setupSidepTables.gs
  * Versión: 3.8.0
  * ============================================================
  *
@@ -11,11 +11,13 @@
  *   CERO datos — los datos van en 02_poblarConfiguraciones.gs.
  *
  * DEPENDE DE:
- *   00_SIDEP_CONFIG.gs v3.6.1+   → CORE_TABLES, ADMIN_TABLES, BI_TABLES,
- *                                   SIDEP_CONFIG, getRootFolderSafe(),
- *                                   getOrCreateSpreadsheet(), nowSIDEP()
- *   00b_inicializarEcosistema.gs → estructura de carpetas Drive (se llama
+ *   00_SIDEP_CONFIG.gs  → SIDEP_CONFIG
+ *   01_SIDEP_TABLES.gs  → CORE_TABLES, ADMIN_TABLES, BI_TABLES
+ *   02_SIDEP_HELPERS.gs → getRootFolderSafe(), getOrCreateSpreadsheet(),
+ *                         nowSIDEP(), registrarTablasSheetsAPI_()
+ *   10_inicializarEcosistema.gs → estructura de carpetas Drive (se llama
  *                                   automáticamente si la raíz no existe)
+ *   Sheets Advanced Service → ya habilitado en el proyecto
  *
  * SPREADSHEETS QUE CREA O VERIFICA:
  *   SIDEP_01_CORE_ACADEMICO  → tablas de configuración, deployments, docentes
@@ -61,6 +63,18 @@
  *   datos reales. Razón: insertCheckboxes() sobre celdas vacías hace que
  *   getLastRow() retorne > 1, engañando a tablasVacias_() y haciendo
  *   creer que la tabla ya tiene datos cuando está vacía.
+ *
+ * VERSIÓN: 3.9.0
+ *
+ * CAMBIOS v3.9.0 vs v3.8.0:
+ *   - NUEVO Paso 3.5: registrarTablasSheetsAPI_() después de configurarTablas_().
+ *     Registra cada hoja como Tabla nativa de Google Sheets vía Sheets Advanced Service.
+ *     Idempotente: SAFE omite tablas ya existentes, FORCE las elimina y recrea.
+ *     Beneficios: AppSheet lee por nombre de tabla, Looker conecta directo,
+ *     referencias estructuradas en fórmulas (=FILTER(Students[Email], ...)).
+ *   - Actualizado DEPENDE DE: lista 01_SIDEP_TABLES.gs y 02_SIDEP_HELPERS.gs
+ *     explícitamente (separación SRP v4.2.0).
+ *   - Actualizado resumen del log: muestra conteo de tablas API registradas.
  *
  * CAMBIOS v3.8.0 vs v3.7.0:
  *   - getRootFolderSafe() en lugar de DriveApp.getFoldersByName() directo.
@@ -149,6 +163,19 @@ function setupSidepTables(options) {
     var adminSS = spreadsheets["admin"];
     var biSS    = spreadsheets["bi"];
 
+    // ── 3.5 Tablas nativas Sheets API ────────────────────
+    // Registra cada hoja como Tabla nativa usando Sheets Advanced Service.
+    // Beneficios: AppSheet + Looker leen por nombre de tabla, referencias
+    // estructuradas en fórmulas, auto-expand visual en Sheets UI.
+    // Idempotente: SAFE omite tablas ya existentes, FORCE las recrea.
+    Logger.log("\n🗂️  Registrando Tablas nativas (Sheets API)...");
+    var tablasPorSS = 0;
+    FILE_MAP.forEach(function(f) {
+      Logger.log("  📋 " + SIDEP_CONFIG.files[f.key]);
+      registrarTablasSheetsAPI_(spreadsheets[f.key], f.tables, opts.force);
+      tablasPorSS += Object.keys(f.tables).length;
+    });
+
     // ── 4. Protección ─────────────────────────────────────
     Logger.log("\n🔒 Protegiendo _CFG_* y _SYS_*...");
     protegerTablasConfig_(coreSS);
@@ -161,6 +188,7 @@ function setupSidepTables(options) {
     var dur = ((Date.now() - tiempoInicio) / 1000).toFixed(1);
     Logger.log("\n════════════════════════════════════════════════");
     Logger.log("✅ Completado en " + dur + "s");
+    Logger.log("   Tablas Sheets : " + totalTablas + " hojas → " + tablasPorSS + " Tablas API");
     Logger.log("   CORE  : " + coreSS.getUrl());
     Logger.log("   ADMIN : " + adminSS.getUrl());
     Logger.log("   BI    : " + biSS.getUrl());
