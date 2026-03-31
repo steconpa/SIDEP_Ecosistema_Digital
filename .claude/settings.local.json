@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls *.js)",
+      "Bash(clasp --version)",
+      "Bash(clasp status:*)",
+      "Bash(clasp push:*)",
+      "Bash(gh pr:*)",
+      "Bash(winget list:*)",
+      "Bash(where gh:*)"
+    ]
+  }
+}
