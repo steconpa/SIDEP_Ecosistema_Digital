@@ -122,6 +122,9 @@ function inicializarEcosistema() {
   // 00 — Instructivos
   crearObtenerCarpeta_(root, "00_INSTRUCTIVOS_VIDEO");
 
+  // 08 — Staging de setup institucional (se comparte con el equipo operativo)
+  crearObtenerCarpeta_(root, SIDEP_CONFIG.stagingFolderName);
+
   Logger.log("════════════════════════════════════════════════");
   Logger.log("✅ Estructura de carpetas lista");
   Logger.log("⏭  SIGUIENTE PASO: ejecutar setupSidepTables()");

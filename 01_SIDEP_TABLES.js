@@ -14,7 +14,7 @@
  *   00_SIDEP_CONFIG.gs  → parámetros del sistema
  *   01_SIDEP_TABLES.gs  → modelo de datos (tablas + constantes)  ← este archivo
  *   02_SIDEP_HELPERS.gs → infraestructura reutilizable (Drive, Sheets, utils)
- *   02c_operacionesCatalogos.gs → lógica de negocio sobre catálogos
+ *   12c_operacionesCatalogos.gs → lógica de negocio sobre catálogos
  *
  * CUÁNDO MODIFICAR ESTE ARCHIVO:
  *   - Agregar/quitar columnas de cualquier tabla → actualizar tabla aquí
@@ -58,7 +58,7 @@
 // SECCIÓN 1: TABLAS — CORE (SIDEP_01_CORE_ACADEMICO)
 // ═════════════════════════════════════════════════════════════════
 // Solo columnas — SIN datos.
-// Los datos van en 02_poblarConfiguraciones.gs y 02b_poblarAperturas.gs.
+// Los datos van en 02_poblarConfiguraciones.gs y 12b_poblarAperturas.gs.
 
 const CORE_TABLES = {
 
@@ -164,6 +164,24 @@ const CORE_TABLES = {
     "UpdatedBy"
   ],
 
+  "_CFG_INSTITUTION": [
+    "InstitutionID",
+    "InstitutionCode",
+    "InstitutionLegalName",
+    "InstitutionShortName",
+    "TaxID",
+    "Address",
+    "ContactPhone",
+    "EducationalDomain",
+    "ContactEmail",
+    "Timezone",
+    "IsActive",
+    "CreatedAt",
+    "CreatedBy",
+    "UpdatedAt",
+    "UpdatedBy"
+  ],
+
   // Catálogo de materias — fuente de verdad para nomenclatura y datos de cada asignatura.
   //
   // CAMBIO v4.0.0 — DOS COLUMNAS NUEVAS + CAMBIO SEMÁNTICO EN CUATRO EXISTENTES:
@@ -171,7 +189,7 @@ const CORE_TABLES = {
   //   Total columnas: 17 (v3.6.1) → 19 (v4.0.0).
   //   DirStartMoment, DirEndMoment, ArtStartBlock, ArtEndBlock: INFORMATIVOS en v4.0.
   //   El rol de control de apertura ahora lo cumple APERTURA_PLAN.
-  //   04_crearAulas_v2.gs NO los consulta para ninguna decisión de apertura.
+  //   14_crearAulas.gs NO los consulta para ninguna decisión de apertura.
   "_CFG_SUBJECTS": [
     "SubjectID",
     "SubjectCode",       // FUC, APU, NLV... — clave de nomenclatura de aulas
@@ -215,7 +233,7 @@ const CORE_TABLES = {
   //   El cohorte de ENTRADA vive en Students.CohortCode y Enrollments.EntryCohortCode.
   //
   // RELACIÓN CON APERTURA_PLAN (v4.0.0):
-  //   Cuando 04_crearAulas_v2.gs procesa una apertura:
+  //   Cuando 14_crearAulas.gs procesa una apertura:
   //     1. Genera fila PENDING aquí con el DeploymentID
   //     2. Actualiza APERTURA_PLAN: AperturaStatus=CREADA + DeploymentID
   //     3. crearAulas() llama Classroom API y marca CREATED
@@ -277,8 +295,8 @@ const CORE_TABLES = {
   // Tabla de aperturas — decisiones de Carlos sobre qué abrir cada período.
   //
   // FLUJO DE ESTADOS (AperturaStatus — StatusType=APERTURA):
-  //   PENDIENTE  → aprobada por Carlos, 04_crearAulas_v2 aún no la procesa
-  //   CREADA     → 04_crearAulas_v2 generó la fila en MasterDeployments y creó el aula
+  //   PENDIENTE  → aprobada por Carlos, 14_crearAulas aún no la procesa
+  //   CREADA     → 14_crearAulas generó la fila en MasterDeployments y creó el aula
   //   CANCELADA  → Carlos decidió no abrir — queda como auditoría permanente
   //
   // IDEMPOTENCIA: clave = CohortCode + MomentCode + SubjectCode + ProgramCode.
@@ -302,7 +320,7 @@ const CORE_TABLES = {
   ],
 
   // Calendario académico — cohorte × momento → fechas reales.
-  // FUENTE DE VERDAD del calendario, usada por el Semáforo (08_semaforo.gs).
+  // FUENTE DE VERDAD del calendario, usada por el Semáforo (18_semaforo.gs).
   //
   // CohortCode aquí = cohorte de ENTRADA del estudiante.
   // (≠ CohortCode en MasterDeployments, que es la ventana del aula)
@@ -639,8 +657,8 @@ const BI_TABLES = {
 // ═════════════════════════════════════════════════════════════════
 // SECCIÓN 4: CONSTANTES OPERATIVAS COMPARTIDAS
 // ═════════════════════════════════════════════════════════════════
-// Usadas por 04_crearAulas_v2, 05_estructurarAulas, 06_importarDocentes,
-// 07_importarEstudiantes, 08_semaforo y 99_orquestador.
+// Usadas por 14_crearAulas, 05_estructurarAulas, 06_importarDocentes,
+// 17_importarEstudiantes, 18_semaforo y 99_orquestador.
 // Estables durante toda la Fase 1 — no se leen de Sheets en cada ejecución.
 // Espejean los catálogos _CFG_MOMENTS y _CFG_PROGRAMS en Sheets.
 // Si el modelo cambia aquí → actualizar también los Sheets + modelVersion.
@@ -745,6 +763,10 @@ const COLUMN_TYPES = {
 
   "_SYS_VERSION": {
     "Environment": { type: "DROPDOWN_INLINE", values: ["PRODUCTION", "STAGING", "TEST"] }
+  },
+
+  "_CFG_INSTITUTION": {
+    "Timezone": { type: "DROPDOWN_INLINE", values: ["America/Bogota"] }
   },
 
   "MasterDeployments": {

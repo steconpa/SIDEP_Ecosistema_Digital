@@ -9,10 +9,12 @@
  *   UNA sola variable. Nada más.
  *
  * REGLA DE ORO — SRP por archivo:
- *   00_SIDEP_CONFIG.gs  → parámetros del sistema       ← este archivo
- *   01_SIDEP_TABLES.gs  → modelo de datos (tablas + constantes)
- *   02_SIDEP_HELPERS.gs → infraestructura reutilizable (Drive, Sheets, utils)
- *   02c_operacionesCatalogos.gs → lógica de negocio sobre catálogos
+ *   00_SIDEP_CONFIG.gs           → parámetros del sistema       ← este archivo
+ *   01_SIDEP_TABLES.gs           → modelo de datos core/admin/bi
+ *   02_SIDEP_HELPERS.gs          → infraestructura reutilizable (Drive, Sheets, utils)
+ *   03_SIDEP_validarEsquema.gs   → validaciones de esquema en arranque
+ *   04_SIDEP_STAGING_TABLES.gs   → modelo de datos staging (STG_*)
+ *   12c_operacionesCatalogos.gs  → lógica de negocio sobre catálogos
  *
  * SCOPE COMPARTIDO EN GAS:
  *   Todos los archivos del mismo proyecto Apps Script comparten scope global.
@@ -23,8 +25,10 @@
  *
  *   ── Infraestructura compartida (no se ejecutan solos) ──────────────────
  *   00_SIDEP_CONFIG.gs           ← este archivo — parámetros del sistema
- *   01_SIDEP_TABLES.gs           ← modelo de datos (tablas + COLUMN_TYPES)
+ *   01_SIDEP_TABLES.gs           ← modelo de datos core/admin/bi (COLUMN_TYPES)
  *   02_SIDEP_HELPERS.gs          ← infraestructura reutilizable (Drive, Sheets, utils)
+ *   03_SIDEP_validarEsquema.gs   ← validaciones de esquema en arranque
+ *   04_SIDEP_STAGING_TABLES.gs   ← modelo de datos staging (STG_*)
  *
  *   ── Scripts ejecutables — onboarding inicial ───────────────────────────
  *   10_inicializarEcosistema.gs  → crea estructura de carpetas en Google Drive
@@ -39,6 +43,14 @@
  *   16b_sincronizarDocentes.gs   → sincroniza estado de invitaciones docentes
  *   17_importarEstudiantes.gs    → carga masiva de Students y Enrollments
  *   18_notificarEstudiantes.gs   → envío de notificaciones a estudiantes
+ *   19_setupStagingSheets.gs     → crea SIDEP_04_STAGING_SETUP y SIDEP_STAGING_APERTURAS
+ *
+ *   ── Capa de datos staging (repo / service / jobs) ──────────────────────
+ *   24_repo_staging.gs           → acceso a datos de staging (CERO negocio)
+ *   30_service_institution_setup.gs → valida y promueve STG_INSTITUTION_SETUP
+ *   31_service_aperturas_staging.gs → valida y promueve STG_APERTURAS
+ *   40_job_procesarStgAperturas.gs  → job manual/automático — procesa STG_APERTURAS
+ *   41_staging_setup_menu.gs        → menú y trigger onOpen de SIDEP_04_STAGING_SETUP
  *
  *   ── Scripts ejecutables — operación continua ───────────────────────────
  *   18_semaforo.gs               → trigger semanal — motor de riesgo académico
@@ -125,12 +137,15 @@ const SIDEP_CONFIG = {
   // Estructura de carpetas en Google Drive
   rootFolderName: "00_SIDEP_ECOSISTEMA_DIGITAL",
   dbFolderName:   "01_BASES_DE_DATOS_MAESTRAS",
+  stagingFolderName: "08_STAGING_SETUP",
 
   // Nombres de los Spreadsheets (no cambiar en producción sin migración de datos)
   files: {
-    core:  "SIDEP_01_CORE_ACADEMICO",
-    admin: "SIDEP_02_GESTION_ADMIN",
-    bi:    "SIDEP_03_BI_DASHBOARD"
+    core:            "SIDEP_01_CORE_ACADEMICO",
+    admin:           "SIDEP_02_GESTION_ADMIN",
+    bi:              "SIDEP_03_BI_DASHBOARD",
+    staging:         "SIDEP_04_STAGING_SETUP",
+    stagingAperturas:"SIDEP_STAGING_APERTURAS"
   },
 
   // Estilo de encabezados — aplica a todas las tablas via configurarTablas_()
@@ -156,6 +171,7 @@ const SIDEP_CONFIG = {
   // Claves centralizadas de ScriptProperties — evita strings mágicos dispersos.
   // Todos los scripts deben leer/escribir ScriptProperties usando estas claves.
   propKeys: {
-    rootFolderId: "sidep_rootFolderId"   // ID de la carpeta raíz en caché O(1)
+    rootFolderId:       "sidep_rootFolderId",        // ID de la carpeta raíz en caché O(1)
+    stagingAperturasId: "sidep_stagingAperturasId"   // ID del SS SIDEP_STAGING_APERTURAS
   }
 };

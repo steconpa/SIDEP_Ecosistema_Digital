@@ -1,7 +1,7 @@
 /**
  * ============================================================
  * SIDEP ECOSISTEMA DIGITAL — Proyecto Google Apps Script
- * Archivo: 08_notificarEstudiantes.gs
+ * Archivo: 18_notificarEstudiantes.gs
  * Versión: 1.0.0
  * ============================================================
  *
@@ -44,7 +44,7 @@
  *   GmailApp: 100 emails/día en Workspace (más que suficiente para 23).
  *   Classroom API (read): sin límite práctico.
  *
- * DEPENDE DE (constantes globales de 07_importarEstudiantes.gs):
+ * DEPENDE DE (constantes globales de 17_importarEstudiantes.gs):
  *   WINDOW_COHORT_ACTUAL — ventana activa (ej. 'MR26')
  *   MOMENTO_ACTUAL       — momento activo (ej. 'C1M2')
  *   FIX-AUDIT M-6: dependencia ahora documentada explícitamente.
@@ -401,7 +401,7 @@ function _agruparPorEstudiante_(memEnr, stuIdx, deplMap, enrollCodes) {
     var winCoh = String(fila[c["WindowCohortCode"]] || "").trim();
     var mom    = String(fila[c["MomentCode"]]  || "").trim();
 
-    // Solo procesar enrollments del período activo (constantes en 07_importarEstudiantes.gs)
+    // Solo procesar enrollments del período activo (constantes en 17_importarEstudiantes.gs)
     if (winCoh !== WINDOW_COHORT_ACTUAL || mom !== MOMENTO_ACTUAL) return;
 
     var stu = stuIdx[stuId];

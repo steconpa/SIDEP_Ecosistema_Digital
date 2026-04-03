@@ -12,23 +12,24 @@
  *   nombres de función ni argumentos de cada script.
  *
  * DEPENDE DE:
- *   00b_inicializarEcosistema.gs → inicializarEcosistema()
- *   01_setupSidepTables.gs       → setupSidepTables()
- *   02_poblarConfiguraciones.gs  → poblarConfiguraciones()
- *   03_poblarSyllabus.gs         → poblarSyllabus()
- *   04_crearAulas.gs             → planificarDesdeAperturaPlan(), planificarYCrear(),
+ *   10_inicializarEcosistema.gs  → inicializarEcosistema()
+ *   11_setupSidepTables.gs       → setupSidepTables()
+ *   12_poblarConfiguraciones.gs  → poblarConfiguraciones()
+ *   12b_poblarAperturas.gs       → poblarAperturas(), gestionarApertura(),
+ *                                   diagnosticoAperturas()
+ *   12c_operacionesCatalogos.gs  → aplicarTiposPostBootstrap(), repoblarTabla()
+ *   13_poblarSyllabus.gs         → poblarSyllabus()
+ *   14_crearAulas.gs             → planificarDesdeAperturaPlan(), planificarYCrear(),
  *                                   crearAulas(), diagnosticoAulas(),
  *                                   planificarDeployments() [@deprecated]
- *   02b_poblarAperturas.gs      → poblarAperturas(), gestionarApertura(),
- *                                   diagnosticoAperturas()
- *   05_estructurarAulas.gs       → estructurarAulas(), diagnosticoEstructura()
- *   06_importarDocentes.gs       → importarDocentes()
- *   06b_sincronizarDocentes.gs   → sincronizarInvitaciones(), diagnosticoInvitaciones(),
+ *   15_estructurarAulas.gs       → estructurarAulas(), diagnosticoEstructura()
+ *   16_importarDocentes.gs       → importarDocentes()
+ *   16b_sincronizarDocentes.gs   → sincronizarInvitaciones(), diagnosticoInvitaciones(),
  *                                   configurarTriggerDiario(), eliminarTriggerDiario()
- *   07_importarEstudiantes.gs    → importarEstudiantes(), diagnosticoEstudiantes()
- *   08_notificarEstudiantes.gs   → notificarEstudiantes(), notificarEstudiantes_dryRun(),
+ *   17_importarEstudiantes.gs    → importarEstudiantes(), diagnosticoEstudiantes()
+ *   18_notificarEstudiantes.gs   → notificarEstudiantes(), notificarEstudiantes_dryRun(),
  *                                   notificarEstudiante_individual(), diagnosticoNotificaciones()
- *   00_SIDEP_CONFIG.gs v4.1.0+   → SIDEP_CONFIG, nowSIDEP()
+ *   00_SIDEP_CONFIG.gs v4.2.0+   → SIDEP_CONFIG, nowSIDEP()
  *
  * FUNCIONES DISPONIBLES (ejecutar directamente desde el editor GAS):
  *
@@ -78,7 +79,7 @@
  *   │  → paso6b_eliminarTrigger()      desinstalar trigger │
  *   ├─────────────────────────────────────────────────────┤
  *   │  PASO 7 — IMPORTAR ESTUDIANTES                      │
- *   │  PREREQUISITO: ESTUDIANTES_DATA lista en 07_...gs   │
+ *   │  PREREQUISITO: ESTUDIANTES_DATA lista en 17_...gs   │
  *   │  → paso7_importarEstudiantes()   invita + matricula │
  *   │  → paso7_diagnostico()           estado actual      │
  *   ├─────────────────────────────────────────────────────┤
@@ -137,7 +138,7 @@
  *     Ahora ambas funciones leen APERTURA_PLAN en lugar de filtrar _CFG_SUBJECTS
  *     por DirStartMoment. paso4_planificar() también actualiza APERTURA_PLAN
  *     (AperturaStatus PENDIENTE → CREADA) como parte del flujo.
- *   - Actualizado DEPENDE DE: refleja 02b_poblarAperturas.gs y renombramiento
+ *   - Actualizado DEPENDE DE: refleja 12b_poblarAperturas.gs y renombramiento
  *     de funciones en 04_crearAulas.gs.
  *   - Actualizado PATRÓN DE USO en comentario de PASO 4: incluye poblarAperturas()
  *     como prerequisito antes del dryRun.
@@ -318,7 +319,7 @@ function paso3_syllabus_force() {
 //   5. paso4_planificarYCrear(cohort, moment) → ejecutar
 //
 // PARA CADA NUEVO PERÍODO:
-//   1. Actualizar obtenerPlanDeAperturas_() en 02b_poblarAperturas.gs
+//   1. Actualizar obtenerPlanDeAperturas_() en 12b_poblarAperturas.gs
 //      con las materias que abre el nuevo cohorte.
 //   2. Crear una función paso2b_cambios_{COHORT}_{MOMENT}() en este
 //      archivo con los cambios que Carlos confirme para ese período.
@@ -329,7 +330,7 @@ function paso3_syllabus_force() {
 
 /**
  * Registra el plan base de aperturas para el cohorte indicado.
- * Lee obtenerPlanDeAperturas_() en 02b_poblarAperturas.gs.
+ * Lee obtenerPlanDeAperturas_() en 12b_poblarAperturas.gs.
  * Modo SAFE: agrega sin duplicar. Re-ejecutar es seguro.
  * PREREQUISITO: setupSidepTables() y poblarConfiguraciones() ya ejecutados.
  *
@@ -828,10 +829,10 @@ function paso6b_eliminarTrigger() {
 // ─────────────────────────────────────────────────────────────
 // PASO 7 — Importar estudiantes
 // PREREQUISITO: paso 4 completado (aulas CREATED).
-// PREREQUISITO: ESTUDIANTES_DATA completada en 07_importarEstudiantes.gs.
+// PREREQUISITO: ESTUDIANTES_DATA completada en 17_importarEstudiantes.gs.
 //
 // FLUJO:
-//   1. Completar ESTUDIANTES_DATA en 07_importarEstudiantes.gs
+//   1. Completar ESTUDIANTES_DATA en 17_importarEstudiantes.gs
 //      con los datos recopilados de los estudiantes MR26.
 //   2. paso7_importarEstudiantes() — registra en Sheets + envía invitaciones
 //   3. paso7_diagnostico() — verificar Students y Enrollments

@@ -13,20 +13,20 @@
  * RESPONSABILIDAD ÚNICA:
  *   Este script ES el punto de contacto entre la decisión humana
  *   (Carlos confirma qué abre) y el sistema automatizado
- *   (04_crearAulas_v2.gs ejecuta lo que APERTURA_PLAN indica).
- *   Sin este paso, 04_crearAulas_v2 no tiene nada que crear.
+ *   (14_crearAulas.gs ejecuta lo que APERTURA_PLAN indica).
+ *   Sin este paso, 14_crearAulas no tiene nada que crear.
  *
  * CUÁNDO EJECUTAR:
  *   Al inicio de cada período, DESPUÉS de que Carlos confirme
  *   cuáles asignaturas se dictan ese momento y ANTES de ejecutar
- *   04_crearAulas_v2.gs.
+ *   14_crearAulas.gs.
  *
  * FLUJO COMPLETO POR PERÍODO (en orden):
  *   1. Carlos confirma lista (WhatsApp, reunión de planeación)
  *   2. Stevens actualiza obtenerPlanDeAperturas_() en este archivo
  *   3. Ejecutar: poblarAperturas({ cohortCode: 'XX26' })
  *   4. Verificar en Sheets → APERTURA_PLAN debe mostrar filas PENDIENTE
- *   5. Ejecutar: 04_crearAulas_v2.gs → planificarDesdeAperturaPlan() / planificarYCrear()
+ *   5. Ejecutar: 14_crearAulas.gs → planificarDesdeAperturaPlan() / planificarYCrear()
  *   6. Carlos ve las aulas en Classroom ✅
  *
  * DEPENDE DE:
@@ -39,7 +39,7 @@
  * NO DEPENDE DE:
  *   Classroom API — este script no la usa en absoluto.
  *   _CFG_SUBJECTS — no valida si los SubjectCodes existen.
- *     La validación ocurre en 04_crearAulas_v2 → leerSubjectsMap_().
+ *     La validación ocurre en 14_crearAulas → leerSubjectsMap_().
  *     Razón: separación de responsabilidades. Este script es rápido
  *     y ligero; la validación pesada le corresponde al creador de aulas.
  *
@@ -59,7 +59,7 @@
  * MATERIAS TRANSVERSALES (IsTransversal = true en _CFG_SUBJECTS):
  *   APU, ING, MAT, HIA, PVE — UNA sola aula compartida por todos los
  *   programas del mismo cohorte/momento. ProgramCode = 'TRV'.
- *   04_crearAulas_v2 detecta IsTransversal y crea solo UNA aula TRV,
+ *   14_crearAulas detecta IsTransversal y crea solo UNA aula TRV,
  *   aunque el código aparezca en múltiples entradas de programas.
  *   Registrar con programCode='TRV' e isTransversal=true en el plan.
  *
@@ -277,7 +277,7 @@ function poblarAperturas(options) {
         a.subjectCode,
         a.programCode,
         a.isTransversal === true,   // BOOLEAN explícito — no confiar en truthiness de JS
-        "PENDIENTE",                // AperturaStatus — 04_crearAulas_v2 lo actualiza a CREADA
+        "PENDIENTE",                // AperturaStatus — 14_crearAulas lo actualiza a CREADA
         "",                         // DeploymentID — vacío hasta que crearAulas() procese
         ejecutor,                   // PlannedBy — trazabilidad de quién registró
         ahora,                      // PlannedAt
@@ -339,7 +339,7 @@ function poblarAperturas(options) {
     Logger.log("   Con errores         : " + sinCodigo.length);
     Logger.log("   Total en tabla      : " + filasFinales.length);
     Logger.log("⏭  SIGUIENTE: planificarDesdeAperturaPlan({ cohortCode: '" +
-      (filtro || "XX26") + "', momentCode: '...' }) en 04_crearAulas_v2.gs");
+      (filtro || "XX26") + "', momentCode: '...' }) en 14_crearAulas.gs");
     Logger.log("════════════════════════════════════════════════");
 
   } catch (e) {
@@ -387,7 +387,7 @@ function poblarAperturas(options) {
 //   Alternativa: force:true sobre el cohorte, con el plan corregido.
 //
 // VALIDACIÓN DE CÓDIGOS:
-//   Los SubjectCodes (SPC, HID, FOT...) se validan en 04_crearAulas_v2.
+//   Los SubjectCodes (SPC, HID, FOT...) se validan en 14_crearAulas.
 //   Si un código no existe en _CFG_SUBJECTS, el script de aulas lo reportará
 //   como "SubjectCode desconocido" sin detener el resto del batch.
 // ─────────────────────────────────────────────────────────────
@@ -662,7 +662,7 @@ function buscarFila_(filas, cohortCode, momentCode, subjectCode, programCode) {
  *     Marca una apertura PENDIENTE o CREADA como CANCELADA.
  *     Requiere notes — documenta la razón (docente, estudiantes, etc.).
  *     No elimina la fila — queda como registro de auditoría permanente.
- *     04_crearAulas_v2 nunca procesa filas CANCELADAS.
+ *     14_crearAulas nunca procesa filas CANCELADAS.
  *     Ejemplo: Carlos confirma que no habrá docente para TLC/FOT este período.
  *
  *   'AGREGAR'

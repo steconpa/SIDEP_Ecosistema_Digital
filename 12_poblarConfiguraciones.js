@@ -8,7 +8,7 @@
  * RESPONSABILIDAD ÚNICA:
  *   Poblar las tablas _CFG_* con los catálogos base del sistema.
  *   CERO lógica de estructura — solo datos de configuración.
- *   Los datos de temarios van en 03_poblarSyllabus.gs.
+ *   Los datos de temarios van en 13_poblarSyllabus.gs.
  *
  * DEPENDE DE:
  *   00_SIDEP_CONFIG.gs v3.6.1+  → getSpreadsheetByName(), escribirDatos()
@@ -437,7 +437,7 @@ function poblarStatuses_(ss, ahora, ejecutor) {
     ["sts_SERR", "STRUCTURE_ERROR",  "Error al crear estructura","STRUCTURE",       3,true,ahora,ejecutor,"",""],
     ["sts_SPND", "STRUCTURE_PENDING","Pendiente de estructurar", "STRUCTURE",       4,true,ahora,ejecutor,"",""],
     // ── APERTURA — estado de decisiones en APERTURA_PLAN (v4.0.0) ─
-    // Usados por 02b_poblarAperturas.gs y 04_crearAulas_v2.gs.
+    // Usados por 12b_poblarAperturas.gs y 14_crearAulas.gs.
     // Los scripts escriben 'PENDIENTE'/'CREADA'/'CANCELADA' directamente
     // en APERTURA_PLAN.AperturaStatus. Estos StatusCodes con prefijo APR_
     // son la referencia canónica para dropdowns en AppSheet (Valid_If sobre

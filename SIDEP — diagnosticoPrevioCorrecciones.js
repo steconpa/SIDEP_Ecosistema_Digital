@@ -167,7 +167,7 @@ function diagnosticoPrevioCorrecciones() {
     Logger.log("     → Ejecuta: poblarConfiguraciones({force:true})");
     Logger.log("     → Tarda ~30 segundos. MR26/C1M2 sigue intacto.");
     Logger.log("");
-    Logger.log("  3. 07_importarEstudiantes.gs (TRV_SUBJECTS):");
+    Logger.log("  3. 17_importarEstudiantes.gs (TRV_SUBJECTS):");
     Logger.log("     → Actualiza el archivo con la versión 1.1.1 del patch");
     Logger.log("     → NO ejecutar importarEstudiantes() — solo actualizar el código");
     Logger.log("     → El fix aplica en la próxima importación (siguiente cohorte)");

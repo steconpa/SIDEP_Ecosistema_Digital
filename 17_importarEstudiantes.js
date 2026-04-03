@@ -1,7 +1,7 @@
 /**
  * ============================================================
  * SIDEP ECOSISTEMA DIGITAL — Proyecto Google Apps Script
- * Archivo: 07_importarEstudiantes.gs
+ * Archivo: 17_importarEstudiantes.gs
  * Versión: 1.0.0
  * ============================================================
  *
@@ -42,7 +42,7 @@
  *   00_SIDEP_CONFIG.gs v4.1.0+ → getSpreadsheetByName(), nowSIDEP(),
  *                                  uuid(), SIDEP_CONFIG
  *   02_poblarConfiguraciones.gs → _CFG_SUBJECTS poblada
- *   04_crearAulas_v2.gs        → aulas CREATED en MasterDeployments
+ *   14_crearAulas.gs        → aulas CREATED en MasterDeployments
  *   06_importarDocentes.gs     → docentes ya invitados (orden recomendado)
  *   Google Classroom API v1    → Editor GAS → ➕ Servicios → Agregar
  *
@@ -926,7 +926,7 @@ function _ejecutarEnrollments_(memEnr, plan) {
  * CUÁNDO USAR:
  *   Cuando la Classroom API falla por restricción de dominio (error
  *   @CannotInviteUserInUntrustedDomain) y se quiere dejar el sistema
- *   en estado consistente para que 08_notificarEstudiantes.gs funcione.
+ *   en estado consistente para que 18_notificarEstudiantes.gs funcione.
  *   El acceso de los estudiantes al aula se gestiona por link de
  *   enrollmentCode (paso8_notificar), no por invitación API.
  *

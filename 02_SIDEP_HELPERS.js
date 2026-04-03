@@ -13,7 +13,7 @@
  *   00_SIDEP_CONFIG.gs  → parámetros del sistema
  *   01_SIDEP_TABLES.gs  → modelo de datos (tablas + constantes)
  *   02_SIDEP_HELPERS.gs → infraestructura reutilizable (Drive, Sheets, utils) ← este archivo
- *   02c_operacionesCatalogos.gs → lógica de negocio sobre catálogos
+ *   12c_operacionesCatalogos.gs → lógica de negocio sobre catálogos
  *
  * FUNCIONES PÚBLICAS (sin sufijo _):
  *   getRootFolderSafe()                          → carpeta raíz con caché O(1)
@@ -53,7 +53,7 @@
  *   - NUEVO _resolverTipoColumna_(tableName, colName, colIndex, catalogCache):
  *     Helper privado que determina el tipo de una columna consultando COLUMN_TYPES
  *     (definido en 01_SIDEP_TABLES.gs). Reglas de resolución en orden:
- *       1. Is*   → CHECKBOX (auto, sin consultar COLUMN_TYPES)
+ *       1. Is*   → BOOLEAN  (auto, sin consultar COLUMN_TYPES)
  *       2. *Date → DATE     (auto)
  *       3. *At   → DATE     (auto)
  *       4. COLUMN_TYPES[tableName][colName].type === "DROPDOWN_INLINE" → DROPDOWN (inline)
@@ -63,14 +63,14 @@
  *   - ACTUALIZADO _buildAddTableRequest_(): nueva firma (sheetId, tableName, cols, maxRows).
  *     cols = array de strings de nombres de columnas (antes era solo colCount).
  *     Ahora construye columnProperties llamando _resolverTipoColumna_() con
- *     catalogCache=null → aplica CHECKBOX, DATE, DROPDOWN_INLINE en setup.
+ *     catalogCache=null → aplica BOOLEAN, DATE, DROPDOWN_INLINE en setup.
  *     DROPDOWN_CAT se omite aquí — se aplica post-bootstrap via aplicarDropdownsCatalogo().
  *   - ACTUALIZADO registrarTablasSheetsAPI_(): pasa cols (array) en lugar de cols.length.
  *   - NUEVO _construirCatalogCache_(): lee los 6 catálogos _CFG_* de coreSS en un
  *     solo batch. Construye mapa { "_CFG_PROGRAMS": [...], "_CFG_STATUSES:RISK": [...] }.
  *     Usado por aplicarDropdownsCatalogo() para resolver DROPDOWN_CAT.
  *   - NUEVO aplicarDropdownsCatalogo(ss, tables): función pública genérica.
- *     Aplica TODOS los tipos (CHECKBOX + DATE + DROPDOWN_INLINE + DROPDOWN_CAT)
+ *     Aplica TODOS los tipos (BOOLEAN + DATE + DROPDOWN_INLINE + DROPDOWN_CAT)
  *     vía updateTable. Safe to re-run: reemplaza columnProperties completas.
  *     Llamar después de poblarConfiguraciones() para que los catálogos tengan datos.
  *     Se puede llamar sobre cualquier Spreadsheet del ecosistema.
@@ -194,21 +194,24 @@ function getOrCreateSpreadsheet(name, folder) {
  * Obtiene un Spreadsheet existente por clave de SIDEP_CONFIG.files (sin crear).
  * Usa getRootFolderSafe() con caché O(1).
  *
- * @param {string} fileKey — "core" | "admin" | "bi"
+ * @param {string} fileKey — "core" | "admin" | "bi" | "staging"
  * @returns {Spreadsheet}
  */
 function getSpreadsheetByName(fileKey) {
   const fileName = SIDEP_CONFIG.files[fileKey];
   if (!fileName) {
-    throw new Error("fileKey inválido: '" + fileKey + "'. Usar: core | admin | bi");
+    throw new Error("fileKey inválido: '" + fileKey + "'. Usar: core | admin | bi | staging");
   }
-  const root     = getRootFolderSafe();
-  const dbFolder = getSubFolder(root, SIDEP_CONFIG.dbFolderName);
-  const files    = dbFolder.getFilesByName(fileName);
+  const root      = getRootFolderSafe();
+  const folderKey = fileKey === "staging"
+    ? SIDEP_CONFIG.stagingFolderName
+    : SIDEP_CONFIG.dbFolderName;
+  const targetFolder = getSubFolder(root, folderKey);
+  const files     = targetFolder.getFilesByName(fileName);
   if (!files.hasNext()) {
     throw new Error(
       "📄 Archivo '" + fileName + "' no encontrado en Drive. " +
-      "Ejecuta setupSidepTables() primero."
+      "Ejecuta el setup correspondiente primero."
     );
   }
   return SpreadsheetApp.open(files.next());
@@ -407,9 +410,12 @@ function _leerHoja_(hoja) {
   encabezado.forEach(function(col, i) {
     if (col !== "") idx[String(col)] = i;
   });
-  const datos = lastRow > 1
+  const datosRaw = lastRow > 1
     ? hoja.getRange(2, 1, lastRow - 1, lastCol).getValues()
     : [];
+  const datos = datosRaw.filter(function(row) {
+    return !_filaFantasmaPorTipos_(row, encabezado);
+  });
   return { hoja: hoja, encabezado: encabezado, datos: datos, idx: idx };
 }
 
@@ -421,12 +427,24 @@ function _leerHoja_(hoja) {
  * @param {{ encabezado, datos }} mem — objeto retornado por _leerHoja_()
  */
 function _escribirEnBatch_(hoja, mem) {
-  if (mem.datos.length === 0) return;
   const lastRow = hoja.getLastRow();
   if (lastRow > 1) {
     hoja.getRange(2, 1, lastRow - 1, hoja.getLastColumn()).clearContent();
   }
+  if (mem.datos.length === 0) return;
   hoja.getRange(2, 1, mem.datos.length, mem.encabezado.length).setValues(mem.datos);
+}
+
+
+function _filaFantasmaPorTipos_(row, encabezado) {
+  return row.every(function(cell, i) {
+    if (cell === "" || cell === null) return true;
+
+    const col = String(encabezado[i] || "");
+    if (cell === false && /^Is[A-Z]/.test(col)) return true;
+
+    return false;
+  });
 }
 
 /**
@@ -471,7 +489,7 @@ function _restaurarHoja_(hoja, backup) {
 // ═════════════════════════════════════════════════════════════════
 
 /**
- * Aplica formatos (checkboxes, fechas, números) a TODAS las hojas
+ * Aplica formatos visuales (checkboxes, fechas, números) a TODAS las hojas
  * de un Spreadsheet según el objeto de tablas recibido.
  *
  * Llamada desde 03_poblarSyllabus.gs DESPUÉS de escribir datos reales.
@@ -645,7 +663,7 @@ function registrarTablasSheetsAPI_(ss, tables, force) {
  *   sin necesidad de actualizar el rango después de cada escribirDatos().
  *
  * TIPOS APLICADOS EN SETUP (catalogCache=null):
- *   CHECKBOX, DATE, DROPDOWN_INLINE — no dependen de datos poblados.
+ *   BOOLEAN, DATE, DROPDOWN_INLINE — no dependen de datos poblados.
  * TIPOS OMITIDOS EN SETUP:
  *   DROPDOWN_CAT — requieren catálogos poblados post-bootstrap.
  *   Se aplican después vía aplicarDropdownsCatalogo().
@@ -657,12 +675,10 @@ function registrarTablasSheetsAPI_(ss, tables, force) {
  * @returns {Object} request addTable listo para batchUpdate
  */
 function _buildAddTableRequest_(sheetId, tableName, cols, maxRows) {
-  // Construir columnProperties — solo tipos aplicables en setup (sin catalog cache)
-  const columnProperties = [];
-  cols.forEach(function(colName, i) {
-    const prop = _resolverTipoColumna_(tableName, colName, i, null);
-    if (prop) columnProperties.push(prop);
-  });
+  // Construir columnProperties para TODAS las columnas.
+  // Si una columna no tiene tipo especial, igual enviamos su nombre para que
+  // la Table API no la renombre como "Column 1", "Column 2", etc.
+  const columnProperties = _construirColumnPropertiesTabla_(tableName, cols, null);
 
   const table = {
     name: tableName,
@@ -675,9 +691,7 @@ function _buildAddTableRequest_(sheetId, tableName, cols, maxRows) {
     }
   };
 
-  if (columnProperties.length > 0) {
-    table.columnProperties = columnProperties;
-  }
+  table.columnProperties = columnProperties;
 
   return { addTable: { table: table } };
 }
@@ -776,7 +790,7 @@ function sincronizarRangosTablas_(ss, tables) {
  * Resuelve el tipo de columna para UNA columna específica.
  *
  * ORDEN DE RESOLUCIÓN (primera regla que aplica gana):
- *   1. Is*          → CHECKBOX   (auto por convención de nombre)
+ *   1. Is*          → BOOLEAN    (auto por convención de nombre)
  *   2. *Date / *At  → DATE       (auto por convención de nombre)
  *   3. COLUMN_TYPES[tableName][colName].type === "DROPDOWN_INLINE"
  *                   → DROPDOWN   con valores hardcodeados
@@ -795,9 +809,9 @@ function sincronizarRangosTablas_(ss, tables) {
  * @returns {Object|null} columnProperties entry, o null si TEXT (default)
  */
 function _resolverTipoColumna_(tableName, colName, colIndex, catalogCache) {
-  // ── 1. Auto: Is* → CHECKBOX ─────────────────────────────────────────────
+  // ── 1. Auto: Is* → BOOLEAN ──────────────────────────────────────────────
   if (/^Is[A-Z]/.test(colName)) {
-    return { columnIndex: colIndex, columnName: colName, columnType: "CHECKBOX" };
+    return { columnIndex: colIndex, columnName: colName, columnType: "BOOLEAN" };
   }
 
   // ── 2. Auto: *Date / *At → DATE ──────────────────────────────────────────
@@ -806,7 +820,14 @@ function _resolverTipoColumna_(tableName, colName, colIndex, catalogCache) {
   }
 
   // ── 3 & 4. Consultar COLUMN_TYPES ───────────────────────────────────────
-  const typeDef = (COLUMN_TYPES[tableName] || {})[colName];
+  const mainTypes = (typeof COLUMN_TYPES !== "undefined" && COLUMN_TYPES[tableName])
+    ? COLUMN_TYPES[tableName]
+    : {};
+  const stagingTypes = (typeof STAGING_COLUMN_TYPES !== "undefined" &&
+                        STAGING_COLUMN_TYPES[tableName])
+    ? STAGING_COLUMN_TYPES[tableName]
+    : {};
+  const typeDef = mainTypes[colName] || stagingTypes[colName];
   if (!typeDef) return null; // TEXT default
 
   if (typeDef.type === "DROPDOWN_INLINE") {
@@ -926,7 +947,7 @@ function _construirCatalogCache_() {
 
 
 /**
- * Aplica tipos de columna completos (CHECKBOX + DATE + DROPDOWN_INLINE + DROPDOWN_CAT)
+ * Aplica tipos de columna completos (BOOLEAN + DATE + DROPDOWN_INLINE + DROPDOWN_CAT)
  * a todas las Tablas nativas de un Spreadsheet.
  *
  * CUÁNDO LLAMAR:
@@ -936,7 +957,7 @@ function _construirCatalogCache_() {
  *   columnProperties completas, no acumula).
  *
  * DIFERENCIA CON _buildAddTableRequest_():
- *   _buildAddTableRequest_() aplica solo CHECKBOX + DATE + DROPDOWN_INLINE
+ *   _buildAddTableRequest_() aplica solo BOOLEAN + DATE + DROPDOWN_INLINE
  *   (tipos conocidos en tiempo de setup, sin necesidad de catálogos).
  *   Esta función aplica TODOS los tipos, incluyendo DROPDOWN_CAT que
  *   requieren leer los valores de las tablas _CFG_*.
@@ -985,12 +1006,9 @@ function aplicarDropdownsCatalogo(ss, tables) {
       return;
     }
 
-    // Resolver TODOS los tipos (auto + inline + catalog)
-    const columnProperties = [];
-    cols.forEach(function(colName, i) {
-      const prop = _resolverTipoColumna_(tableName, colName, i, catalogCache);
-      if (prop) columnProperties.push(prop);
-    });
+    // Resolver TODOS los tipos (auto + inline + catalog) y conservar
+    // el nombre explícito de todas las columnas.
+    const columnProperties = _construirColumnPropertiesTabla_(tableName, cols, catalogCache);
 
     if (columnProperties.length === 0) {
       Logger.log("    ⏭  Sin tipos a aplicar: " + tableName);
@@ -1025,4 +1043,16 @@ function aplicarDropdownsCatalogo(ss, tables) {
     Logger.log("  ❌ aplicarDropdownsCatalogo error: " + e.message);
     throw e;
   }
+}
+
+
+function _construirColumnPropertiesTabla_(tableName, cols, catalogCache) {
+  return cols.map(function(colName, i) {
+    const resolved = _resolverTipoColumna_(tableName, colName, i, catalogCache);
+    if (resolved) return resolved;
+    return {
+      columnIndex: i,
+      columnName: colName
+    };
+  });
 }

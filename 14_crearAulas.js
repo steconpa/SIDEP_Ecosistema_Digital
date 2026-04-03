@@ -1,7 +1,7 @@
 /**
  * ============================================================
  * SIDEP ECOSISTEMA DIGITAL — Proyecto Google Apps Script
- * Archivo: 04_crearAulas.gs
+ * Archivo: 14_crearAulas.gs
  * Versión: 2.1
  * ============================================================
  *
@@ -14,7 +14,7 @@
  *   ANTES (v1.x): el sistema decidía qué aulas crear filtrando
  *     _CFG_SUBJECTS.DirStartMoment === momentCode. Lógica lineal fija.
  *   AHORA (v2.x): Carlos decide qué abre. Su decisión se registra en
- *     APERTURA_PLAN (via 02b_poblarAperturas.gs). Este script lee
+ *     APERTURA_PLAN (via 12b_poblarAperturas.gs). Este script lee
  *     APERTURA_PLAN y ejecuta exactamente esas aperturas.
  *
  *   Consecuencias del cambio:
@@ -30,7 +30,7 @@
  *                                  MOMENTOS_DIR, MOMENTOS_ART,
  *                                  PROGRAMAS_ESPECIFICOS
  *   02_poblarConfiguraciones.gs → _CFG_SUBJECTS poblada
- *   02b_poblarAperturas.gs      → APERTURA_PLAN con filas PENDIENTE
+ *   12b_poblarAperturas.gs      → APERTURA_PLAN con filas PENDIENTE
  *   Google Classroom API v1     → Editor GAS → ➕ Servicios →
  *                                  "Google Classroom API" → Agregar
  *
@@ -51,7 +51,7 @@
  *
  * FLUJO COMPLETO POR PERÍODO:
  *   1. Carlos confirma asignaturas (WhatsApp/reunión)
- *   2. Stevens actualiza 02b_poblarAperturas.gs
+ *   2. Stevens actualiza 12b_poblarAperturas.gs
  *   3. poblarAperturas({ cohortCode: 'MR26' })
  *   4. dryRunMR26_C1M2()                       ← preview sin tocar nada
  *   5. planificarYCrearMR26_C1M2()              ← ejecuta real
