@@ -183,13 +183,18 @@ function instalarTriggerStaging() {
  */
 function limpiarTriggerStaging() {
   const ss       = getStagingSS_();
+  const ssId     = ss.getId();
   const triggers = ScriptApp.getProjectTriggers();
   let eliminados = 0;
   triggers.forEach(function(t) {
-    if (t.getHandlerFunction() === "onOpenStaging" &&
-        t.getTriggerSourceId() === ss.getId()) {
+    const handler = t.getHandlerFunction();
+    // Limpiar triggers con AMBOS nombres: el actual (onOpenStaging) y el
+    // legacy (onOpenStaging_) que puede haber quedado de versiones anteriores.
+    if ((handler === "onOpenStaging" || handler === "onOpenStaging_") &&
+        t.getTriggerSourceId() === ssId) {
       ScriptApp.deleteTrigger(t);
       eliminados++;
+      Logger.log("  🗑  Trigger eliminado: " + handler);
     }
   });
   Logger.log(eliminados > 0
@@ -213,10 +218,11 @@ function limpiarTriggerStaging() {
  * triggers creados con ScriptApp.newTrigger(). Las funciones referenciadas
  * en .addItem() del menú también deben ser públicas (sin _).
  */
-function onOpenStaging() {
+function onOpenStaging(e) {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const ui = ss.getUi();
+    // SpreadsheetApp.getUi() funciona en triggers de scripts standalone.
+    // NO usar getActiveSpreadsheet().getUi() — retorna null en este contexto.
+    const ui = SpreadsheetApp.getUi();
 
     ui.createMenu("SIDEP")
       .addItem("Iniciar apertura",   "iniciarAperturaDesdeStaging")
@@ -227,9 +233,9 @@ function onOpenStaging() {
       .addItem("Ver diagnóstico",    "diagnosticoStaging")
       .addToUi();
 
-  } catch (e) {
+  } catch (err) {
     // Si falla el menú, no bloquear la apertura del SS
-    Logger.log("⚠️  onOpenStaging: error agregando menú — " + e.message);
+    Logger.log("⚠️  onOpenStaging: error agregando menú — " + err.message);
   }
 }
 
