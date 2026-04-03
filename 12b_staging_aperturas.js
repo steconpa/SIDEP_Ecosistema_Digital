@@ -55,9 +55,10 @@
  *   - FIX: leerCohortesActivos_() y leerMateriasActivas_() usan getTableData()
  *     en lugar del patrón headers.indexOf() duplicado (reduce 2 API calls a 1).
  *   - FIX: validación de TRV auto-corrige IsTransversal=FALSE cuando ProgramCode=TRV.
- *   - FIX: comentario de onOpenStaging_ corregido — los installable triggers sí
- *     pueden llamar funciones con guión bajo (la restricción aplica solo a
- *     simple triggers nativos de GAS).
+ *   - FIX: funciones UI-facing (onOpenStaging, iniciarAperturaDesdeStaging,
+ *     actualizarDropdownsStaging, limpiarStagingProcesados, diagnosticoStaging)
+ *     sin guión bajo final — GAS no ejecuta funciones privadas (_) desde
+ *     triggers ni menús.
  *   - FIX: referencia de dependencia actualizada a v1.3 (no v1.2).
  *
  * VERSIÓN: 1.0.0
@@ -124,7 +125,7 @@ function configurarStagingAperturas() {
     aplicarEncabezados_(hoja);
     aplicarFormatoStaging_(hoja);
     aplicarProteccionesStaging_(hoja);
-    actualizarDropdownsStaging_();   // carga listas desde _CFG_*
+    actualizarDropdownsStaging();   // carga listas desde _CFG_*
 
     const dur = ((Date.now() - inicio) / 1000).toFixed(1);
     Logger.log("════════════════════════════════════════════════");
@@ -152,7 +153,7 @@ function instalarTriggerStaging() {
     const triggers = ScriptApp.getProjectTriggers();
     for (let i = 0; i < triggers.length; i++) {
       const t = triggers[i];
-      if (t.getHandlerFunction() === "onOpenStaging_" &&
+      if (t.getHandlerFunction() === "onOpenStaging" &&
           t.getTriggerSourceId() === ss.getId()) {
         Logger.log("⚠️  Trigger onOpen ya existe para SIDEP_STAGING_APERTURAS.");
         Logger.log("   Si necesitas reinstalarlo: limpiarTriggerStaging() primero.");
@@ -160,7 +161,7 @@ function instalarTriggerStaging() {
       }
     }
 
-    ScriptApp.newTrigger("onOpenStaging_")
+    ScriptApp.newTrigger("onOpenStaging")
       .forSpreadsheet(ss)
       .onOpen()
       .create();
@@ -185,7 +186,7 @@ function limpiarTriggerStaging() {
   const triggers = ScriptApp.getProjectTriggers();
   let eliminados = 0;
   triggers.forEach(function(t) {
-    if (t.getHandlerFunction() === "onOpenStaging_" &&
+    if (t.getHandlerFunction() === "onOpenStaging" &&
         t.getTriggerSourceId() === ss.getId()) {
       ScriptApp.deleteTrigger(t);
       eliminados++;
@@ -206,29 +207,29 @@ function limpiarTriggerStaging() {
  * Se dispara automáticamente cuando Carlos abre SIDEP_STAGING_APERTURAS.
  * Agrega el menú SIDEP con las opciones de apertura.
  *
- * NOTA: el guión bajo final es convención interna de SIDEP (función privada
- * del módulo), NO un problema para GAS. Los installable triggers creados con
- * ScriptApp.newTrigger() SÍ pueden llamar funciones con guión bajo. La
- * restricción de "solo funciones públicas" aplica únicamente a los simple
- * triggers nativos (onOpen, onEdit reservados por GAS).
+ * IMPORTANTE: esta función NO debe tener guión bajo al final del nombre.
+ * GAS trata funciones con sufijo _ como privadas y NO las ejecuta desde
+ * triggers ni menús — aplica tanto a simple triggers como a installable
+ * triggers creados con ScriptApp.newTrigger(). Las funciones referenciadas
+ * en .addItem() del menú también deben ser públicas (sin _).
  */
-function onOpenStaging_() {
+function onOpenStaging() {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const ui = ss.getUi();
 
     ui.createMenu("SIDEP")
-      .addItem("Iniciar apertura",   "iniciarAperturaDesdeStaging_")
+      .addItem("Iniciar apertura",   "iniciarAperturaDesdeStaging")
       .addSeparator()
-      .addItem("Actualizar listas",  "actualizarDropdownsStaging_")
-      .addItem("Limpiar procesados", "limpiarStagingProcesados_")
+      .addItem("Actualizar listas",  "actualizarDropdownsStaging")
+      .addItem("Limpiar procesados", "limpiarStagingProcesados")
       .addSeparator()
-      .addItem("Ver diagnóstico",    "diagnosticoStaging_")
+      .addItem("Ver diagnóstico",    "diagnosticoStaging")
       .addToUi();
 
   } catch (e) {
     // Si falla el menú, no bloquear la apertura del SS
-    Logger.log("⚠️  onOpenStaging_: error agregando menú — " + e.message);
+    Logger.log("⚠️  onOpenStaging: error agregando menú — " + e.message);
   }
 }
 
@@ -244,13 +245,13 @@ function onOpenStaging_() {
  * Llamada desde el menú: SIDEP → Iniciar apertura.
  * También puede llamarse directamente desde el editor para pruebas.
  */
-function iniciarAperturaDesdeStaging_() {
+function iniciarAperturaDesdeStaging() {
   const ss = getStagingSS_();
   const ui = ss.getUi();
 
   try {
     Logger.log("════════════════════════════════════════════════");
-    Logger.log("📋 SIDEP — iniciarAperturaDesdeStaging_ v1.0");
+    Logger.log("📋 SIDEP — iniciarAperturaDesdeStaging v1.0");
     Logger.log("   Ejecutor: " + Session.getEffectiveUser().getEmail());
     Logger.log("════════════════════════════════════════════════");
 
@@ -319,14 +320,14 @@ function iniciarAperturaDesdeStaging_() {
     });
     escribirEstadosBatch_(hoja, resultado.estadosPorFila, numFilas);
 
-    Logger.log("✅ iniciarAperturaDesdeStaging_ completado.");
+    Logger.log("✅ iniciarAperturaDesdeStaging completado.");
     ui.alert("Apertura completada",
              resultado.plan.length + " apertura(s) registradas en APERTURA_PLAN.\n" +
              "Verificar con: SIDEP → Ver diagnóstico.",
              ui.ButtonSet.OK);
 
   } catch (e) {
-    Logger.log("❌ ERROR en iniciarAperturaDesdeStaging_: " + e.message);
+    Logger.log("❌ ERROR en iniciarAperturaDesdeStaging: " + e.message);
     ui.alert("Error en apertura",
              "Ocurrió un error:\n\n" + e.message +
              "\n\nRevisa el Logger en el editor GAS para más detalle.",
@@ -339,7 +340,7 @@ function iniciarAperturaDesdeStaging_() {
  * leyendo los catálogos activos desde _CFG_COHORTS y _CFG_SUBJECTS.
  * Llamada desde el menú y desde configurarStagingAperturas().
  */
-function actualizarDropdownsStaging_() {
+function actualizarDropdownsStaging() {
   try {
     Logger.log("  🔄 Actualizando dropdowns de staging...");
 
@@ -372,7 +373,7 @@ function actualizarDropdownsStaging_() {
     Logger.log("     Cohortes: " + cohortes.length + " | Materias: " + materias.length);
 
   } catch (e) {
-    Logger.log("  ❌ ERROR en actualizarDropdownsStaging_: " + e.message);
+    Logger.log("  ❌ ERROR en actualizarDropdownsStaging: " + e.message);
     throw e;
   }
 }
@@ -382,7 +383,7 @@ function actualizarDropdownsStaging_() {
  * Preserva las filas con error o sin procesar.
  * Llamada desde el menú: SIDEP → Limpiar procesados.
  */
-function limpiarStagingProcesados_() {
+function limpiarStagingProcesados() {
   const ss = getStagingSS_();
   const ui = ss.getUi();
 
@@ -425,7 +426,7 @@ function limpiarStagingProcesados_() {
     ui.alert("Listo", eliminadas + " fila(s) procesadas eliminadas.", ui.ButtonSet.OK);
 
   } catch (e) {
-    Logger.log("❌ ERROR en limpiarStagingProcesados_: " + e.message);
+    Logger.log("❌ ERROR en limpiarStagingProcesados: " + e.message);
     ui.alert("Error", e.message, ui.ButtonSet.OK);
   }
 }
@@ -435,7 +436,7 @@ function limpiarStagingProcesados_() {
  * Solo lectura — no modifica nada.
  * Llamada desde el menú: SIDEP → Ver diagnóstico.
  */
-function diagnosticoStaging_() {
+function diagnosticoStaging() {
   try {
     const ss      = getStagingSS_();
     const hoja    = ss.getSheetByName(STAGING_SHEET_NAME);
@@ -470,7 +471,7 @@ function diagnosticoStaging_() {
     Logger.log("════════════════════════════════════════════════");
 
   } catch (e) {
-    Logger.log("❌ ERROR en diagnosticoStaging_: " + e.message);
+    Logger.log("❌ ERROR en diagnosticoStaging: " + e.message);
   }
 }
 
