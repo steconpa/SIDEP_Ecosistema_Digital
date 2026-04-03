@@ -579,7 +579,7 @@ function paso_staging_limpiarTrigger() {
  */
 function paso_staging_dropdowns() {
   Logger.log("▶ STAGING: Actualizando dropdowns desde catálogos...");
-  actualizarDropdownsStaging_();
+  actualizarDropdownsStaging();
 }
 
 /**
@@ -588,7 +588,7 @@ function paso_staging_dropdowns() {
  */
 function paso_staging_diagnostico() {
   Logger.log("▶ STAGING: Diagnóstico...");
-  diagnosticoStaging_();
+  diagnosticoStaging();
 }
 
 /**
@@ -597,10 +597,10 @@ function paso_staging_diagnostico() {
  * PRERREQUISITO: tener datos en SIDEP_STAGING_APERTURAS filas 3+.
  */
 function paso_staging_probar_AB26() {
-  Logger.log("▶ STAGING PRUEBA: Ejecutando iniciarAperturaDesdeStaging_ para AB26...");
+  Logger.log("▶ STAGING PRUEBA: Ejecutando iniciarAperturaDesdeStaging para AB26...");
   Logger.log("   ⚠️  Esta función muestra alertas de UI — ejecutar desde el staging SS,");
   Logger.log("   no desde el editor, para ver los diálogos de confirmación.");
-  iniciarAperturaDesdeStaging_();
+  iniciarAperturaDesdeStaging();
 }
 
 
