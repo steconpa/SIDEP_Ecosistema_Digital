@@ -252,8 +252,8 @@ function onOpenStaging(e) {
  * También puede llamarse directamente desde el editor para pruebas.
  */
 function iniciarAperturaDesdeStaging() {
-  const ss = getStagingSS_();
-  const ui = ss.getUi();
+  const ss  = getStagingSS_();
+  const ui  = SpreadsheetApp.getUi();
 
   try {
     Logger.log("════════════════════════════════════════════════");
@@ -390,8 +390,8 @@ function actualizarDropdownsStaging() {
  * Llamada desde el menú: SIDEP → Limpiar procesados.
  */
 function limpiarStagingProcesados() {
-  const ss = getStagingSS_();
-  const ui = ss.getUi();
+  const ss  = getStagingSS_();
+  const ui  = SpreadsheetApp.getUi();
 
   try {
     const hoja    = ss.getSheetByName(STAGING_SHEET_NAME);
