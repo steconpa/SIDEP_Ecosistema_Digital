@@ -2,7 +2,7 @@
  * ============================================================
  * SIDEP ECOSISTEMA DIGITAL — Proyecto Google Apps Script
  * Archivo: 12b_staging_aperturas.gs
- * Versión: 1.0.0
+ * Versión: 1.1.0
  * ============================================================
  *
  * PROPÓSITO:
@@ -61,7 +61,7 @@
  *     triggers ni menús.
  *   - FIX: referencia de dependencia actualizada a v1.3 (no v1.2).
  *
- * VERSIÓN: 1.0.0
+ * VERSIÓN: 1.1.0
  * AUTOR: Stevens Contreras
  * FECHA: 2026-03-31
  * ============================================================
@@ -225,12 +225,13 @@ function onOpenStaging(e) {
     const ui = SpreadsheetApp.getUi();
 
     ui.createMenu("SIDEP")
-      .addItem("Iniciar apertura",   "iniciarAperturaDesdeStaging")
+      .addItem("Iniciar apertura",         "iniciarAperturaDesdeStaging")
+      .addItem("Crear aulas en Classroom", "crearAulasDesdeStaging")
       .addSeparator()
-      .addItem("Actualizar listas",  "actualizarDropdownsStaging")
-      .addItem("Limpiar procesados", "limpiarStagingProcesados")
+      .addItem("Actualizar listas",        "actualizarDropdownsStaging")
+      .addItem("Limpiar procesados",       "limpiarStagingProcesados")
       .addSeparator()
-      .addItem("Ver diagnóstico",    "diagnosticoStaging")
+      .addItem("Ver diagnóstico",          "diagnosticoStaging")
       .addToUi();
 
   } catch (err) {
@@ -243,6 +244,103 @@ function onOpenStaging(e) {
 // ─────────────────────────────────────────────────────────────
 // FUNCIÓN PRINCIPAL — LLAMADA DESDE EL MENÚ
 // ─────────────────────────────────────────────────────────────
+
+/**
+ * Lee las filas ya procesadas del staging (Estado = "Procesado ✓") y crea
+ * las aulas en Google Classroom para cada combinación única (CohortCode, MomentCode).
+ *
+ * Llamada desde el menú: SIDEP → Crear aulas en Classroom.
+ * Requiere que "Iniciar apertura" se haya ejecutado primero — necesita filas
+ * con Status PENDIENTE en APERTURA_PLAN para poder planificar y crear.
+ */
+function crearAulasDesdeStaging() {
+  const ss = getStagingSS_();
+  const ui = SpreadsheetApp.getUi();
+
+  try {
+    Logger.log("════════════════════════════════════════════════");
+    Logger.log("🏫 SIDEP — crearAulasDesdeStaging v1.0");
+    Logger.log("   Ejecutor: " + Session.getEffectiveUser().getEmail());
+    Logger.log("════════════════════════════════════════════════");
+
+    const hoja = ss.getSheetByName(STAGING_SHEET_NAME);
+    if (!hoja) throw new Error("Hoja '" + STAGING_SHEET_NAME + "' no encontrada.");
+
+    const lastRow = hoja.getLastRow();
+    if (lastRow < FILA_DATOS) {
+      ui.alert("Sin datos", "No hay filas en el staging.", ui.ButtonSet.OK);
+      return;
+    }
+
+    const numFilas = lastRow - FILA_DATOS + 1;
+    const datos    = hoja.getRange(FILA_DATOS, 1, numFilas, TOTAL_COLS).getValues();
+
+    // Recopilar combinaciones únicas (cohortCode, momentCode) de filas procesadas
+    const combinaciones = [];
+    datos.forEach(function(fila) {
+      const cohort  = String(fila[COL_COHORT  - 1] || "").trim().toUpperCase();
+      const moment  = String(fila[COL_MOMENT  - 1] || "").trim().toUpperCase();
+      const estado  = String(fila[COL_ESTADO  - 1] || "").trim();
+
+      if (!cohort || !moment) return;
+      if (estado !== "Procesado ✓") return;   // solo filas ya aperturadas
+
+      // Agregar si no existe aún
+      const key = cohort + "|" + moment;
+      const yaExiste = combinaciones.some(function(c) { return c.key === key; });
+      if (!yaExiste) combinaciones.push({ key: key, cohortCode: cohort, momentCode: moment });
+    });
+
+    if (combinaciones.length === 0) {
+      ui.alert(
+        "Sin filas procesadas",
+        "No se encontraron filas con estado 'Procesado ✓'.\n\n" +
+        "Ejecuta primero: SIDEP → Iniciar apertura.",
+        ui.ButtonSet.OK
+      );
+      return;
+    }
+
+    // Confirmar
+    const detalle = combinaciones.map(function(c) {
+      return "  • " + c.cohortCode + " / " + c.momentCode;
+    }).join("\n");
+
+    const respuesta = ui.alert(
+      "Crear aulas en Classroom",
+      "Se crearán las aulas para:\n\n" + detalle +
+      "\n\n¿Continuar?",
+      ui.ButtonSet.YES_NO
+    );
+    if (respuesta !== ui.Button.YES) {
+      Logger.log("  Usuario canceló la creación de aulas.");
+      return;
+    }
+
+    // Ejecutar planificarYCrear por cada combinación
+    combinaciones.forEach(function(c) {
+      Logger.log("  🏫 Creando aulas: " + c.cohortCode + " / " + c.momentCode);
+      paso4_planificarYCrear(c.cohortCode, c.momentCode);
+    });
+
+    Logger.log("✅ crearAulasDesdeStaging completado.");
+    ui.alert(
+      "Aulas creadas",
+      "Proceso completado para " + combinaciones.length + " combinación(es).\n\n" +
+      "Verificar con: SIDEP → Ver diagnóstico.",
+      ui.ButtonSet.OK
+    );
+
+  } catch (e) {
+    Logger.log("❌ ERROR en crearAulasDesdeStaging: " + e.message);
+    ui.alert(
+      "Error al crear aulas",
+      "Ocurrió un error:\n\n" + e.message +
+      "\n\nRevisa el Logger en el editor GAS para más detalle.",
+      ui.ButtonSet.OK
+    );
+  }
+}
 
 /**
  * Lee el staging, valida las filas, y llama poblarAperturas({ planExterno }).
