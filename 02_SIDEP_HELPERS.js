@@ -951,8 +951,8 @@ function _construirCatalogCache_() {
   }
 
   // ── Teachers — emails activos para dropdown TeacherEmail en STG_ASIGNACIONES ─
-  const adminSS = getSpreadsheetByName("admin");
-  const hojaTeachers = adminSS.getSheetByName("Teachers");
+  // Teachers vive en SIDEP_01_CORE_ACADEMICO (coreSS), no en admin.
+  const hojaTeachers = coreSS.getSheetByName("Teachers");
   if (hojaTeachers && hojaTeachers.getLastRow() > 1) {
     const data    = hojaTeachers.getDataRange().getValues();
     const head    = data[0];
