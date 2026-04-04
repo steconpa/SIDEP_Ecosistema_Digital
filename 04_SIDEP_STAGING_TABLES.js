@@ -193,6 +193,13 @@ const STAGING_ACADEMICO_COLUMN_TYPES = {
   },
 
   "STG_ASIGNACIONES": {
+    // Campos de lookup — listan valores activos de las tablas maestras
+    "TeacherEmail": { type: "DROPDOWN_CAT", source: "Teachers" },
+    "ProgramCode":  { type: "DROPDOWN_CAT", source: "_CFG_PROGRAMS" },
+    "SubjectCode":  { type: "DROPDOWN_CAT", source: "_CFG_SUBJECTS" },
+    "CohortCode":   { type: "DROPDOWN_CAT", source: "_CFG_COHORTS" },
+    "MomentCode":   { type: "DROPDOWN_CAT", source: "_CFG_MOMENTS" },
+    // Campos de control
     "ApprovalStatus": { type: "DROPDOWN_INLINE", values: ["SUBMITTED", "APPROVED", "REJECTED"] },
     "StageStatus":    { type: "DROPDOWN_INLINE", values: ["PENDING", "VALIDATED", "PROMOTED", "ERROR"] }
   },

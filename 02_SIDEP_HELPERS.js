@@ -832,7 +832,11 @@ function _resolverTipoColumna_(tableName, colName, colIndex, catalogCache) {
                         STAGING_COLUMN_TYPES[tableName])
     ? STAGING_COLUMN_TYPES[tableName]
     : {};
-  const typeDef = mainTypes[colName] || stagingTypes[colName];
+  const stagingAcadTypes = (typeof STAGING_ACADEMICO_COLUMN_TYPES !== "undefined" &&
+                             STAGING_ACADEMICO_COLUMN_TYPES[tableName])
+    ? STAGING_ACADEMICO_COLUMN_TYPES[tableName]
+    : {};
+  const typeDef = mainTypes[colName] || stagingTypes[colName] || stagingAcadTypes[colName];
   if (!typeDef) return null; // TEXT default
 
   if (typeDef.type === "DROPDOWN_INLINE") {
@@ -944,6 +948,24 @@ function _construirCatalogCache_() {
       if (!cache[key]) cache[key] = [];
       cache[key].push(code);
     });
+  }
+
+  // ── Teachers — emails activos para dropdown TeacherEmail en STG_ASIGNACIONES ─
+  const adminSS = getSpreadsheetByName("admin");
+  const hojaTeachers = adminSS.getSheetByName("Teachers");
+  if (hojaTeachers && hojaTeachers.getLastRow() > 1) {
+    const data    = hojaTeachers.getDataRange().getValues();
+    const head    = data[0];
+    const iEmail  = head.indexOf("Email");
+    const iStatus = head.indexOf("TeacherStatusCode");
+    if (iEmail !== -1) {
+      cache["Teachers"] = data.slice(1)
+        .filter(function(r) {
+          return iStatus === -1 || String(r[iStatus] || "").trim() === "TEACHER_ACTIVE";
+        })
+        .map(function(r) { return String(r[iEmail] || "").trim(); })
+        .filter(function(v) { return v !== ""; });
+    }
   }
 
   Logger.log("  📦 catalogCache: " + Object.keys(cache).length + " catálogos cargados");
