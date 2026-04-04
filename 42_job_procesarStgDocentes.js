@@ -55,9 +55,20 @@ function procesarStgDocentes(options) {
   if (!lock) return;
 
   try {
-    const mem  = leerStgDocentes({ stageStatus: "PENDING" });
+    // Leer todas las filas — el filtro incluye StageStatus vacío (filas nuevas)
+    // y PENDING. Excluye VALIDATED, PROMOTED y ERROR (ya procesadas).
+    const mem  = leerStgDocentes();
     const rows = mem.datos.filter(function(row) {
-      return String(row[mem.idx["ApprovalStatus"]] || "").trim() === "APPROVED";
+      const approval = String(row[mem.idx["ApprovalStatus"]] || "").trim();
+      const stage    = String(row[mem.idx["StageStatus"]]    || "").trim();
+      return approval === "APPROVED" && (stage === "PENDING" || stage === "");
+    });
+
+    // Autogenerar StageDocenteID si el staff lo dejó vacío
+    rows.forEach(function(row) {
+      if (!String(row[mem.idx["StageDocenteID"]] || "").trim()) {
+        row[mem.idx["StageDocenteID"]] = uuid("stgdoc");
+      }
     });
 
     Logger.log("  STG_DOCENTES APPROVED/PENDING: " + rows.length);
@@ -156,9 +167,19 @@ function procesarStgAsignaciones(options) {
   if (!lock) return;
 
   try {
-    const mem  = leerStgAsignaciones({ stageStatus: "PENDING" });
+    // Leer todas las filas — el filtro incluye StageStatus vacío (filas nuevas) y PENDING.
+    const mem  = leerStgAsignaciones();
     const rows = mem.datos.filter(function(row) {
-      return String(row[mem.idx["ApprovalStatus"]] || "").trim() === "APPROVED";
+      const approval = String(row[mem.idx["ApprovalStatus"]] || "").trim();
+      const stage    = String(row[mem.idx["StageStatus"]]    || "").trim();
+      return approval === "APPROVED" && (stage === "PENDING" || stage === "");
+    });
+
+    // Autogenerar StageAsignacionID si está vacío
+    rows.forEach(function(row) {
+      if (!String(row[mem.idx["StageAsignacionID"]] || "").trim()) {
+        row[mem.idx["StageAsignacionID"]] = uuid("stgasig");
+      }
     });
 
     Logger.log("  STG_ASIGNACIONES APPROVED/PENDING: " + rows.length);
