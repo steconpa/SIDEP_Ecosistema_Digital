@@ -2,33 +2,45 @@
  * ============================================================
  * SIDEP ECOSISTEMA DIGITAL — Proyecto Google Apps Script
  * Archivo: 52_menu_staging_docentes.gs
- * Versión: 2.0.0
+ * Versión: 3.0.0
  * ============================================================
  *
  * RESPONSABILIDAD ÚNICA:
  *   Menú y trigger onOpen para SIDEP_STG_DOCENTES.
  *
- * MENÚ:
- *   SIDEP Docentes
- *   ├── 👤 Procesar solicitudes de docentes   → procesarStgDocentes()
- *   ├── 🏫 Procesar asignaciones a aulas      → procesarStgAsignaciones()
- *   ├── ─────────────────────────
- *   ├── 🔄 Actualizar listados (dropdowns)    → menuActualizarListados_()
- *   ├── ─────────────────────────
- *   ├── ✅ Validar docentes (dry-run)
- *   ├── ✅ Validar asignaciones (dry-run)
- *   ├── ─────────────────────────
- *   ├── 📋 Ver estado de invitaciones
- *   ├── ─────────────────────────
+ * MENÚ (en orden de ejecución):
+ *
+ *   — PREPARACION —
+ *   ├── 🔄 Actualizar listados (dropdowns)
+ *
+ *   — REGISTRO DE DOCENTES —
+ *   ├── ✅ Validar docentes (sin escribir)
+ *   ├── 👤 Procesar solicitudes de docentes
+ *
+ *   — ASIGNACIONES A AULAS —
+ *   ├── ✅ Validar asignaciones (sin escribir)
+ *   ├── 🏫 Procesar asignaciones a aulas
+ *
+ *   — SEGUIMIENTO DE INVITACIONES —
+ *   ├── 🔁 Sincronizar invitaciones (verificar aceptación)
+ *   ├── ⏰ Activar sincronización diaria (trigger)
+ *   ├── ⏹  Desactivar sincronización diaria
+ *
+ *   — NOTIFICACIONES —
  *   ├── 📧 Notificar docentes (preview)
  *   ├── 📧 Notificar docentes (enviar)
- *   └── 🔍 Diagnóstico staging
+ *
+ *   — DIAGNÓSTICO —
+ *   ├── 📋 Ver estado de invitaciones (staging)
+ *   └── 🔍 Diagnóstico completo
  *
  * DEPENDE DE:
  *   00_SIDEP_CONFIG.gs            → SIDEP_CONFIG.files.stagingDocentes
  *   42_job_procesarStgDocentes.gs → procesarStgDocentes(), procesarStgAsignaciones()
  *   24b_repo_staging_academico.gs → leerStgAsignaciones(), getTableData()
  *   16b_notificarDocentes.gs      → notificarDocentes()
+ *   16b_sincronizarDocentes.gs    → sincronizarInvitaciones(), configurarTriggerDiario(),
+ *                                   eliminarTriggerDiario(), diagnosticoInvitaciones()
  * ============================================================
  */
 
@@ -38,24 +50,41 @@ function stagingDocentesOnOpen(e) {
 
   SpreadsheetApp.getUi()
     .createMenu("SIDEP Docentes")
-    .addItem("👤 Procesar solicitudes de docentes",  "menuProcesarDocentes_")
-    .addItem("🏫 Procesar asignaciones a aulas",     "menuProcesarAsignaciones_")
+
+    // — PREPARACION —
+    .addItem("🔄 Actualizar listados (dropdowns)",       "menuActualizarListados_")
     .addSeparator()
-    .addItem("🔄 Actualizar listados (dropdowns)",    "menuActualizarListados_")
+
+    // — REGISTRO DE DOCENTES —
+    .addItem("✅ Validar docentes (sin escribir)",        "menuValidarDocentes_")
+    .addItem("👤 Procesar solicitudes de docentes",       "menuProcesarDocentes_")
     .addSeparator()
-    .addItem("✅ Validar docentes (sin escribir)",   "menuValidarDocentes_")
-    .addItem("✅ Validar asignaciones (sin escribir)","menuValidarAsignaciones_")
+
+    // — ASIGNACIONES A AULAS —
+    .addItem("✅ Validar asignaciones (sin escribir)",    "menuValidarAsignaciones_")
+    .addItem("🏫 Procesar asignaciones a aulas",          "menuProcesarAsignaciones_")
     .addSeparator()
-    .addItem("📋 Ver estado de invitaciones",        "menuVerInvitaciones_")
+
+    // — SEGUIMIENTO DE INVITACIONES —
+    .addItem("🔁 Sincronizar invitaciones",               "menuSincronizarInvitaciones_")
+    .addItem("⏰ Activar sincronización diaria",           "menuActivarTriggerDiario_")
+    .addItem("⏹  Desactivar sincronización diaria",       "menuDesactivarTriggerDiario_")
     .addSeparator()
-    .addItem("📧 Notificar docentes (preview)",      "menuNotificarDocentes_dryRun_")
-    .addItem("📧 Notificar docentes (enviar)",       "menuNotificarDocentes_")
-    .addItem("🔍 Diagnóstico staging",               "menuDiagnosticoStaging_")
+
+    // — NOTIFICACIONES —
+    .addItem("📧 Notificar docentes (preview)",           "menuNotificarDocentes_dryRun_")
+    .addItem("📧 Notificar docentes (enviar)",            "menuNotificarDocentes_")
+    .addSeparator()
+
+    // — DIAGNÓSTICO —
+    .addItem("📋 Ver estado de invitaciones (staging)",   "menuVerInvitaciones_")
+    .addItem("🔍 Diagnóstico completo",                   "menuDiagnosticoStaging_")
+
     .addToUi();
 }
 
 
-// ── Instalación del trigger ───────────────────────────────────
+// ── Instalación del trigger onOpen ────────────────────────────
 
 function instalarTriggerStagingDocentes_(ss) {
   const targetId = ss.getId();
@@ -75,7 +104,45 @@ function instalarTriggerStagingDocentes_(ss) {
 }
 
 
-// ── Items de menú ─────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+// PREPARACION
+// ════════════════════════════════════════════════════════════
+
+function menuActualizarListados_() {
+  const ui = SpreadsheetApp.getUi();
+  try {
+    const ss = getSpreadsheetByName("stagingDocentes");
+    aplicarDropdownsCatalogo(ss, STAGING_ACADEMICO_TABLES);
+    ui.alert(
+      "Listados actualizados.\n\n" +
+      "Los dropdowns de TeacherEmail, ProgramCode, SubjectCode, CohortCode\n" +
+      "y MomentCode ahora reflejan los datos actuales de las tablas maestras.\n\n" +
+      "Ejecuta esta opcion cada vez que registres nuevos docentes o cambies catalogo.",
+      ui.ButtonSet.OK
+    );
+  } catch (e) {
+    ui.alert("Error al actualizar listados:\n" + e.message);
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════
+// REGISTRO DE DOCENTES
+// ════════════════════════════════════════════════════════════
+
+function menuValidarDocentes_() {
+  try {
+    procesarStgDocentes({ dryRun: true });
+    SpreadsheetApp.getUi().alert(
+      "Validacion OK — sin errores.\n" +
+      "Revisa el Logger (Extensiones -> Apps Script -> Registros) para el detalle.\n\n" +
+      "Puedes continuar con 'Procesar solicitudes de docentes'.",
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+  } catch (e) {
+    SpreadsheetApp.getUi().alert("Validacion fallida:\n" + e.message);
+  }
+}
 
 function menuProcesarDocentes_() {
   const ui   = SpreadsheetApp.getUi();
@@ -83,20 +150,41 @@ function menuProcesarDocentes_() {
     "SIDEP — Procesar solicitudes de docentes",
     "Procesa todas las filas de STG_DOCENTES con:\n" +
     "  ApprovalStatus = APPROVED\n" +
-    "  StageStatus    = PENDING\n\n" +
+    "  StageStatus    = PENDING (o vacio)\n\n" +
     "Acciones:\n" +
-    "  REGISTER   → crea el docente en la tabla maestra Teachers\n" +
-    "  UPDATE     → actualiza sus datos en Teachers\n" +
-    "  DEACTIVATE → marca al docente como inactivo\n\n" +
-    "¿Continuar?",
+    "  REGISTER   -> crea el docente en la tabla maestra Teachers\n" +
+    "  UPDATE     -> actualiza sus datos en Teachers\n" +
+    "  DEACTIVATE -> marca al docente como inactivo\n\n" +
+    "Tip: ejecuta 'Actualizar listados' despues para que el\n" +
+    "nuevo docente aparezca en el dropdown de STG_ASIGNACIONES.\n\n" +
+    "Continuar?",
     ui.ButtonSet.YES_NO
   );
   if (resp !== ui.Button.YES) return;
   try {
     procesarStgDocentes();
-    ui.alert("✅ Proceso completado.\nRevisa STG_DOCENTES_LOG para el detalle.", ui.ButtonSet.OK);
+    ui.alert("Proceso completado.\nRevisa STG_DOCENTES_LOG para el detalle.", ui.ButtonSet.OK);
   } catch (e) {
-    ui.alert("❌ Error:\n" + e.message);
+    ui.alert("Error:\n" + e.message);
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════
+// ASIGNACIONES A AULAS
+// ════════════════════════════════════════════════════════════
+
+function menuValidarAsignaciones_() {
+  try {
+    procesarStgAsignaciones({ dryRun: true });
+    SpreadsheetApp.getUi().alert(
+      "Validacion OK — sin errores.\n" +
+      "Revisa el Logger para el detalle.\n\n" +
+      "Puedes continuar con 'Procesar asignaciones a aulas'.",
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+  } catch (e) {
+    SpreadsheetApp.getUi().alert("Validacion fallida:\n" + e.message);
   }
 }
 
@@ -106,86 +194,165 @@ function menuProcesarAsignaciones_() {
     "SIDEP — Procesar asignaciones a aulas",
     "Procesa todas las filas de STG_ASIGNACIONES con:\n" +
     "  ApprovalStatus = APPROVED\n" +
-    "  StageStatus    = PENDING\n\n" +
+    "  StageStatus    = PENDING (o vacio)\n\n" +
     "Acciones:\n" +
-    "  ASSIGN → crea la asignación y envía invitación al aula vía Classroom\n" +
-    "  REMOVE → remueve al docente del aula\n\n" +
-    "⚠️  El docente debe aceptar la invitación por email.\n\n" +
-    "¿Continuar?",
+    "  ASSIGN -> inserta en TeacherAssignments + envia invitacion Classroom\n" +
+    "  REMOVE -> remueve al docente del aula\n\n" +
+    "Al finalizar envia automaticamente el correo de horario\n" +
+    "a cada docente con invitacion nueva.\n\n" +
+    "El docente debe aceptar la invitacion de Classroom por email.\n\n" +
+    "Continuar?",
     ui.ButtonSet.YES_NO
   );
   if (resp !== ui.Button.YES) return;
   try {
     procesarStgAsignaciones();
-    ui.alert("✅ Proceso completado.\nRevisa STG_DOCENTES_LOG para el detalle.", ui.ButtonSet.OK);
+    ui.alert("Proceso completado.\nRevisa STG_DOCENTES_LOG para el detalle.", ui.ButtonSet.OK);
   } catch (e) {
-    ui.alert("❌ Error:\n" + e.message);
+    ui.alert("Error:\n" + e.message);
   }
 }
 
-function menuActualizarListados_() {
-  const ui = SpreadsheetApp.getUi();
+
+// ════════════════════════════════════════════════════════════
+// SEGUIMIENTO DE INVITACIONES
+// ════════════════════════════════════════════════════════════
+
+function menuSincronizarInvitaciones_() {
+  const ui   = SpreadsheetApp.getUi();
+  const resp = ui.alert(
+    "SIDEP — Sincronizar invitaciones de Classroom",
+    "Verifica via Classroom API si cada docente con\n" +
+    "InvitationStatus = TEACHER_INVITED ya respondio:\n\n" +
+    "  Invitacion consumida + docente en el aula  -> TEACHER_ACCEPTED\n" +
+    "  Invitacion consumida + no esta en el aula  -> TEACHER_DECLINED\n" +
+    "  Invitacion aun activa                      -> sigue TEACHER_INVITED\n\n" +
+    "Actualiza TeacherAssignments: IsActive = true para aceptados.\n\n" +
+    "Continuar?",
+    ui.ButtonSet.YES_NO
+  );
+  if (resp !== ui.Button.YES) return;
   try {
-    const ss = getSpreadsheetByName("stagingDocentes");
-    aplicarDropdownsCatalogo(ss, STAGING_ACADEMICO_TABLES);
+    sincronizarInvitaciones();
+    ui.alert("Sincronizacion completada.\nRevisa el Logger para el detalle.", ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert("Error:\n" + e.message);
+  }
+}
+
+function menuActivarTriggerDiario_() {
+  const ui   = SpreadsheetApp.getUi();
+  const resp = ui.alert(
+    "SIDEP — Activar sincronizacion diaria",
+    "Instala un trigger automatico que ejecuta\n" +
+    "'Sincronizar invitaciones' todos los dias a las 7 AM.\n\n" +
+    "Util mientras haya docentes con TEACHER_INVITED pendientes.\n" +
+    "Desactivalo cuando todos hayan aceptado.\n\n" +
+    "Continuar?",
+    ui.ButtonSet.YES_NO
+  );
+  if (resp !== ui.Button.YES) return;
+  try {
+    configurarTriggerDiario();
     ui.alert(
-      "✅ Listados actualizados.\n\n" +
-      "Los dropdowns de TeacherEmail, ProgramCode, SubjectCode, CohortCode y MomentCode\n" +
-      "ahora reflejan los datos actuales de las tablas maestras.",
+      "Trigger diario activado.\n" +
+      "'Sincronizar invitaciones' se ejecutara cada dia a las 7 AM (Bogota).\n\n" +
+      "Desactivalo con 'Desactivar sincronizacion diaria' cuando todos\n" +
+      "los docentes hayan aceptado la invitacion.",
       ui.ButtonSet.OK
     );
   } catch (e) {
-    ui.alert("❌ Error al actualizar listados:\n" + e.message);
+    ui.alert("Error:\n" + e.message);
   }
 }
 
-function menuValidarDocentes_() {
+function menuDesactivarTriggerDiario_() {
+  const ui   = SpreadsheetApp.getUi();
+  const resp = ui.alert(
+    "SIDEP — Desactivar sincronizacion diaria",
+    "Elimina el trigger automatico de sincronizacion.\n\n" +
+    "Hazlo solo cuando todos los docentes hayan aceptado\n" +
+    "la invitacion (InvitationStatus = TEACHER_ACCEPTED).\n\n" +
+    "Puedes verificar el estado con 'Diagnostico completo'.\n\n" +
+    "Continuar?",
+    ui.ButtonSet.YES_NO
+  );
+  if (resp !== ui.Button.YES) return;
   try {
-    procesarStgDocentes({ dryRun: true });
-    SpreadsheetApp.getUi().alert(
-      "✅ Validación OK — sin errores.\nRevisa el Logger (Ver → Registros) para el detalle.",
-      SpreadsheetApp.getUi().ButtonSet.OK
-    );
+    eliminarTriggerDiario();
+    ui.alert("Trigger diario desactivado.", ui.ButtonSet.OK);
   } catch (e) {
-    SpreadsheetApp.getUi().alert("❌ Validación fallida:\n" + e.message);
+    ui.alert("Error:\n" + e.message);
   }
 }
 
-function menuValidarAsignaciones_() {
+
+// ════════════════════════════════════════════════════════════
+// NOTIFICACIONES
+// ════════════════════════════════════════════════════════════
+
+function menuNotificarDocentes_dryRun_() {
   try {
-    procesarStgAsignaciones({ dryRun: true });
+    notificarDocentes({ dryRun: true });
     SpreadsheetApp.getUi().alert(
-      "✅ Validación OK — sin errores.\nRevisa el Logger (Ver → Registros) para el detalle.",
+      "Preview completado.\n" +
+      "Revisa el Logger (Extensiones -> Apps Script -> Registros)\n" +
+      "para ver los emails que se enviarian.",
       SpreadsheetApp.getUi().ButtonSet.OK
     );
   } catch (e) {
-    SpreadsheetApp.getUi().alert("❌ Validación fallida:\n" + e.message);
+    SpreadsheetApp.getUi().alert("Error:\n" + e.message);
   }
 }
+
+function menuNotificarDocentes_() {
+  const ui   = SpreadsheetApp.getUi();
+  const resp = ui.alert(
+    "SIDEP — Notificar docentes",
+    "Envia un email a cada docente con InvitationStatus = TEACHER_INVITED\n" +
+    "con su horario completo y links directos a sus aulas.\n\n" +
+    "Este correo se envia automaticamente al procesar asignaciones.\n" +
+    "Usa esta opcion solo para reenvios manuales.\n\n" +
+    "Continuar?",
+    ui.ButtonSet.YES_NO
+  );
+  if (resp !== ui.Button.YES) return;
+  try {
+    notificarDocentes();
+    ui.alert("Notificaciones enviadas.\nRevisa el Logger para el detalle.", ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert("Error:\n" + e.message);
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════
+// DIAGNOSTICO
+// ════════════════════════════════════════════════════════════
 
 function menuVerInvitaciones_() {
   try {
-    const mem        = leerStgAsignaciones();
-    const iStatus    = mem.idx["StageStatus"];
-    const iEmail     = mem.idx["TeacherEmail"];
-    const iProg      = mem.idx["ProgramCode"];
-    const iSubj      = mem.idx["SubjectCode"];
-    const cuentas    = { PROMOTED: [], ERROR: [], PENDING: [], VALIDATED: [], OTROS: [] };
+    const mem     = leerStgAsignaciones();
+    const iStatus = mem.idx["StageStatus"];
+    const iEmail  = mem.idx["TeacherEmail"];
+    const iProg   = mem.idx["ProgramCode"];
+    const iSubj   = mem.idx["SubjectCode"];
+    const cuentas = { PROMOTED: [], ERROR: [], PENDING: [], VALIDATED: [], OTROS: [] };
 
     mem.datos.forEach(function(row) {
       const st    = String(row[iStatus] || "").trim() || "OTROS";
-      const linea = String(row[iEmail] || "") + " → " +
+      const linea = String(row[iEmail] || "") + " -> " +
                     String(row[iProg]  || "") + "-" + String(row[iSubj] || "");
       if (cuentas[st]) cuentas[st].push(linea);
       else             cuentas["OTROS"].push(linea);
     });
 
     const lineas = [
-      "STG_ASIGNACIONES — Estado de invitaciones",
+      "STG_ASIGNACIONES — Estado",
       "",
-      "PROMOTED  (" + cuentas.PROMOTED.length  + "): enviadas y aceptadas o procesadas",
+      "PROMOTED  (" + cuentas.PROMOTED.length  + "): procesadas correctamente",
       "PENDING   (" + cuentas.PENDING.length   + "): pendientes de aprobar",
-      "VALIDATED (" + cuentas.VALIDATED.length + "): aprobadas, en proceso",
+      "VALIDATED (" + cuentas.VALIDATED.length + "): en proceso",
       "ERROR     (" + cuentas.ERROR.length     + "): fallaron — revisar STG_DOCENTES_LOG"
     ];
 
@@ -196,41 +363,7 @@ function menuVerInvitaciones_() {
 
     SpreadsheetApp.getUi().alert(lineas.join("\n"), SpreadsheetApp.getUi().ButtonSet.OK);
   } catch (e) {
-    SpreadsheetApp.getUi().alert("❌ Error:\n" + e.message);
-  }
-}
-
-function menuNotificarDocentes_dryRun_() {
-  try {
-    notificarDocentes({ dryRun: true });
-    SpreadsheetApp.getUi().alert(
-      "✅ Preview completado.\nRevisa el Logger (Extensiones → Apps Script → Registros) para ver los emails que se enviarían.",
-      SpreadsheetApp.getUi().ButtonSet.OK
-    );
-  } catch (e) {
-    SpreadsheetApp.getUi().alert("❌ Error:\n" + e.message);
-  }
-}
-
-function menuNotificarDocentes_() {
-  const ui   = SpreadsheetApp.getUi();
-  const resp = ui.alert(
-    "SIDEP — Notificar docentes",
-    "Envía un email a cada docente con InvitationStatus=TEACHER_INVITED informando:\n" +
-    "  · Su horario completo (día, hora de inicio/fin, horas/semana)\n" +
-    "  · Links directos a sus aulas en Google Classroom\n" +
-    "  · Recordatorio de aceptar la invitación\n\n" +
-    "⚠️  Esto enviará emails reales. El proceso también corre automáticamente\n" +
-    "al final de 'Procesar asignaciones a aulas'.\n\n" +
-    "¿Continuar?",
-    ui.ButtonSet.YES_NO
-  );
-  if (resp !== ui.Button.YES) return;
-  try {
-    notificarDocentes();
-    ui.alert("✅ Notificaciones enviadas.\nRevisa el Logger para el detalle.", ui.ButtonSet.OK);
-  } catch (e) {
-    ui.alert("❌ Error:\n" + e.message);
+    SpreadsheetApp.getUi().alert("Error:\n" + e.message);
   }
 }
 
@@ -243,11 +376,34 @@ function menuDiagnosticoStaging_() {
     const contarStatus = function(rows, idx) {
       const c = {};
       rows.forEach(function(r) {
-        const v = String(r[idx["StageStatus"]] || "VACÍO").trim();
+        const v = String(r[idx["StageStatus"]] || "VACIO").trim();
         c[v] = (c[v] || 0) + 1;
       });
       return Object.keys(c).sort().map(function(k) { return "  " + k + ": " + c[k]; }).join("\n");
     };
+
+    // Estado de invitaciones en TeacherAssignments
+    const adminSS    = getSpreadsheetByName("admin");
+    const hojaAsig   = adminSS.getSheetByName("TeacherAssignments");
+    let   invResumen = "";
+    if (hojaAsig && hojaAsig.getLastRow() > 1) {
+      const enc     = hojaAsig.getRange(1, 1, 1, hojaAsig.getLastColumn()).getValues()[0];
+      const iInvSt  = enc.indexOf("InvitationStatus");
+      const datos   = hojaAsig.getRange(2, 1, hojaAsig.getLastRow() - 1,
+                                        hojaAsig.getLastColumn()).getValues();
+      const porSt   = {};
+      datos.forEach(function(f) {
+        const st = String(f[iInvSt] || "SIN_STATUS").trim();
+        porSt[st] = (porSt[st] || 0) + 1;
+      });
+      invResumen = "\nTeacherAssignments — InvitationStatus:\n" +
+        Object.keys(porSt).sort().map(function(k) { return "  " + k + ": " + porSt[k]; }).join("\n");
+    }
+
+    // Trigger diario
+    const triggerActivo = ScriptApp.getProjectTriggers().some(function(t) {
+      return t.getHandlerFunction() === "sincronizarInvitaciones";
+    });
 
     const msg = [
       "STG_DOCENTES (" + memDoc.datos.length + " filas)",
@@ -255,13 +411,15 @@ function menuDiagnosticoStaging_() {
       "",
       "STG_ASIGNACIONES (" + memAsig.datos.length + " filas)",
       contarStatus(memAsig.datos, memAsig.idx),
+      invResumen,
       "",
-      "STG_DOCENTES_LOG: " + memLog.datos.length + " entradas"
+      "STG_DOCENTES_LOG: " + memLog.datos.length + " entradas",
+      "Trigger sincronizacion diaria: " + (triggerActivo ? "ACTIVO (7 AM)" : "inactivo")
     ].join("\n");
 
-    SpreadsheetApp.getUi().alert("SIDEP — Diagnóstico Staging Docentes", msg,
+    SpreadsheetApp.getUi().alert("SIDEP — Diagnostico Docentes", msg,
       SpreadsheetApp.getUi().ButtonSet.OK);
   } catch (e) {
-    SpreadsheetApp.getUi().alert("❌ Error:\n" + e.message);
+    SpreadsheetApp.getUi().alert("Error:\n" + e.message);
   }
 }
