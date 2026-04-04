@@ -258,6 +258,117 @@ function aplicarProteccionesStagingDocentes_(ss) {
 }
 
 
+// ============================================================
+// STAGING ESTUDIANTES — SIDEP_STG_ESTUDIANTES
+// ============================================================
+
+/**
+ * Crea/configura el Spreadsheet SIDEP_STG_ESTUDIANTES en 09_STAGING_ACADEMICO.
+ * Sigue el mismo patrón que setupStagingDocentesSheets().
+ *
+ * Uso:
+ *   setupStagingEstudiantesSheets()               → SAFE
+ *   setupStagingEstudiantesSheets({ force:true }) → recrea hojas si ya tienen datos
+ */
+function setupStagingEstudiantesSheets(options) {
+  var opts  = options || {};
+  var force = opts.force === true;
+  var ss    = getOrCreateStagingEstudiantesSpreadsheet_();
+  var t0    = Date.now();
+
+  Logger.log("════════════════════════════════════════════════");
+  Logger.log("SIDEP — setupStagingEstudiantesSheets");
+  Logger.log("   Modo    : " + (force ? "FORCE" : "SAFE"));
+  Logger.log("   Archivo : " + SIDEP_CONFIG.files.stagingEstudiantes);
+  Logger.log("   Carpeta : " + SIDEP_CONFIG.stagingAcademicoFolderName);
+  Logger.log("════════════════════════════════════════════════");
+
+  configurarTablasStaging_(ss, STAGING_ESTUDIANTES_TABLES, force);
+
+  Logger.log("\nRegistrando Tablas nativas de staging estudiantes...");
+  registrarTablasSheetsAPI_(ss, STAGING_ESTUDIANTES_TABLES, force);
+
+  Logger.log("\nAplicando dropdowns/tipos...");
+  aplicarDropdownsCatalogo(ss, STAGING_ESTUDIANTES_TABLES);
+
+  Logger.log("\nAplicando protecciones de columnas...");
+  aplicarProteccionesStagingEstudiantes_(ss);
+
+  Logger.log("\nInstalando trigger de menu al abrir...");
+  instalarTriggerStagingEstudiantes_(ss);
+
+  var dur = ((Date.now() - t0) / 1000).toFixed(1);
+  Logger.log("\n════════════════════════════════════════════════");
+  Logger.log("OK setupStagingEstudiantesSheets completado en " + dur + "s");
+  Logger.log("   Spreadsheet: " + ss.getName());
+  Logger.log("   Hojas       : " + Object.keys(STAGING_ESTUDIANTES_TABLES).length);
+  Logger.log("════════════════════════════════════════════════");
+}
+
+
+function getOrCreateStagingEstudiantesSpreadsheet_() {
+  var root = getRootFolderSafe();
+  var folder;
+  try {
+    folder = getSubFolder(root, SIDEP_CONFIG.stagingAcademicoFolderName);
+  } catch (e) {
+    folder = root.createFolder(SIDEP_CONFIG.stagingAcademicoFolderName);
+    Logger.log("  + Carpeta creada: " + SIDEP_CONFIG.stagingAcademicoFolderName);
+  }
+
+  var ss = getOrCreateSpreadsheet(SIDEP_CONFIG.files.stagingEstudiantes, folder);
+
+  PropertiesService.getScriptProperties()
+    .setProperty(SIDEP_CONFIG.propKeys.stagingEstudiantesId, ss.getId());
+
+  return ss;
+}
+
+
+function aplicarProteccionesStagingEstudiantes_(ss) {
+  var prefix = "SIDEP_STG_ESTUDIANTES:";
+
+  Object.keys(STAGING_ESTUDIANTES_TABLES).forEach(function(tableName) {
+    var hoja = ss.getSheetByName(tableName);
+    if (!hoja) return;
+
+    var editable    = STAGING_ESTUDIANTES_EDITABLE_COLUMNS[tableName] || [];
+    var headers     = hoja.getRange(1, 1, 1, hoja.getLastColumn()).getValues()[0];
+    var currentUser = Session.getEffectiveUser().getEmail();
+
+    // Limpiar protecciones previas de este prefijo
+    hoja.getProtections(SpreadsheetApp.ProtectionType.RANGE).forEach(function(p) {
+      try {
+        if (p.getDescription() && p.getDescription().indexOf(prefix) === 0) p.remove();
+      } catch (e) {}
+    });
+
+    if (tableName === "STG_ESTUDIANTES_LOG") {
+      protegerRangoStaging_(
+        hoja.getRange(1, 1, Math.max(hoja.getMaxRows(), 2), hoja.getMaxColumns()),
+        prefix + "FULL:" + tableName,
+        currentUser
+      );
+      return;
+    }
+
+    headers.forEach(function(col, i) {
+      var isEditable = editable.indexOf(String(col)) !== -1;
+      if (isEditable) {
+        hoja.getRange(1, i + 1).setBackground("#d9ead3");
+      } else {
+        hoja.getRange(1, i + 1).setBackground("#f4cccc");
+        protegerRangoStaging_(
+          hoja.getRange(1, i + 1, Math.max(hoja.getMaxRows(), 2), 1),
+          prefix + "COL:" + tableName + ":" + col,
+          currentUser
+        );
+      }
+    });
+  });
+}
+
+
 function protegerRangoStaging_(range, description, currentUser) {
   try {
     const p = range.protect();

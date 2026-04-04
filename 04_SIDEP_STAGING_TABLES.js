@@ -263,6 +263,129 @@ const STAGING_ACADEMICO_EDITABLE_COLUMNS = {
 // datos incompletos en las maestras.
 // ============================================================
 
+// ============================================================
+// STAGING ESTUDIANTES — SIDEP_STG_ESTUDIANTES
+// ============================================================
+
+const STAGING_ESTUDIANTES_TABLES = {
+
+  /**
+   * STG_ESTUDIANTES
+   * Cargado por coordinación para registrar/actualizar estudiantes.
+   * Columnas staff: RequestedAction … Notes + ApprovalStatus
+   * Columnas sistema: Stage* / Target* / Processed*
+   */
+  "STG_ESTUDIANTES": [
+    "StageEstudianteID",
+    "RequestedAction",       // staff: REGISTER | UPDATE | DEACTIVATE
+    "FirstName",
+    "LastName",
+    "Email",
+    "Phone",
+    "DocumentType",          // CC | TI | CE | PAS
+    "DocumentNumber",
+    "StudentType",           // DIRECTO | ARTICULADO
+    "ProgramCode",
+    "CohortCode",            // cohorte de ENTRADA — INMUTABLE
+    "Notes",
+    "ApprovalStatus",
+    "StageStatus",
+    "ValidationMessage",
+    "TargetStudentID",
+    "RequestedBy",
+    "RequestedAt",
+    "ProcessedAt",
+    "ProcessedBy"
+  ],
+
+  /**
+   * STG_MATRICULAS
+   * Cargado por coordinación para matricular estudiantes en aulas.
+   * Llave natural: StudentEmail × ProgramCode × SubjectCode × CohortCode × MomentCode
+   * El horario NO se repite aquí — viene de TeacherAssignments via DeploymentID.
+   */
+  "STG_MATRICULAS": [
+    "StageMatriculaID",
+    "RequestedAction",       // staff: ENROLL | DROP
+    "StudentEmail",
+    "ProgramCode",
+    "SubjectCode",
+    "CohortCode",            // ventana del AULA (WindowCohortCode)
+    "MomentCode",
+    "AttemptNumber",         // 1=primera vez, 2=reintento
+    "Notes",
+    "ApprovalStatus",
+    "StageStatus",
+    "ValidationMessage",
+    "TargetEnrollmentID",
+    "RequestedBy",
+    "RequestedAt",
+    "ProcessedAt",
+    "ProcessedBy"
+  ],
+
+  /**
+   * STG_ESTUDIANTES_LOG
+   * Escritura exclusiva del sistema. Sin filas editables por staff.
+   */
+  "STG_ESTUDIANTES_LOG": [
+    "StageLogID",
+    "StageEntityType",       // ESTUDIANTE | MATRICULA
+    "StageRecordID",
+    "Action",
+    "Result",
+    "Message",
+    "LoggedAt",
+    "LoggedBy"
+  ]
+};
+
+
+const STAGING_ESTUDIANTES_COLUMN_TYPES = {
+
+  "STG_ESTUDIANTES": {
+    "RequestedAction": { type: "DROPDOWN_INLINE", values: ["REGISTER", "UPDATE", "DEACTIVATE"] },
+    "DocumentType":    { type: "DROPDOWN_INLINE", values: ["CC", "TI", "CE", "PAS"] },
+    "StudentType":     { type: "DROPDOWN_INLINE", values: ["DIRECTO", "ARTICULADO"] },
+    "ProgramCode":     { type: "DROPDOWN_CAT",    source: "_CFG_PROGRAMS" },
+    "CohortCode":      { type: "DROPDOWN_CAT",    source: "_CFG_COHORTS"  },
+    "ApprovalStatus":  { type: "DROPDOWN_INLINE", values: ["SUBMITTED", "APPROVED", "REJECTED"] },
+    "StageStatus":     { type: "DROPDOWN_INLINE", values: ["PENDING", "VALIDATED", "PROMOTED", "ERROR"] }
+  },
+
+  "STG_MATRICULAS": {
+    "RequestedAction": { type: "DROPDOWN_INLINE", values: ["ENROLL", "DROP"] },
+    "StudentEmail":    { type: "DROPDOWN_CAT",    source: "Students" },
+    "ProgramCode":     { type: "DROPDOWN_CAT",    source: "_CFG_PROGRAMS" },
+    "SubjectCode":     { type: "DROPDOWN_CAT",    source: "_CFG_SUBJECTS"  },
+    "CohortCode":      { type: "DROPDOWN_CAT",    source: "_CFG_COHORTS"   },
+    "MomentCode":      { type: "DROPDOWN_CAT",    source: "_CFG_MOMENTS"   },
+    "ApprovalStatus":  { type: "DROPDOWN_INLINE", values: ["SUBMITTED", "APPROVED", "REJECTED"] },
+    "StageStatus":     { type: "DROPDOWN_INLINE", values: ["PENDING", "VALIDATED", "PROMOTED", "ERROR"] }
+  },
+
+  "STG_ESTUDIANTES_LOG": {
+    "StageEntityType": { type: "DROPDOWN_INLINE", values: ["ESTUDIANTE", "MATRICULA"] },
+    "Action":          { type: "DROPDOWN_INLINE", values: ["VALIDATE", "PROMOTE", "NOTIFY"] },
+    "Result":          { type: "DROPDOWN_INLINE", values: ["SUCCESS", "ERROR", "PARTIAL", "SKIPPED"] }
+  }
+};
+
+
+const STAGING_ESTUDIANTES_EDITABLE_COLUMNS = {
+  "STG_ESTUDIANTES": [
+    "RequestedAction", "FirstName", "LastName", "Email", "Phone",
+    "DocumentType", "DocumentNumber", "StudentType", "ProgramCode",
+    "CohortCode", "Notes", "ApprovalStatus"
+  ],
+  "STG_MATRICULAS": [
+    "RequestedAction", "StudentEmail", "ProgramCode", "SubjectCode",
+    "CohortCode", "MomentCode", "AttemptNumber", "Notes", "ApprovalStatus"
+  ],
+  "STG_ESTUDIANTES_LOG": []
+};
+
+
 const MAESTRA_REQUIRED_COLS = {
 
   /**
@@ -296,6 +419,44 @@ const MAESTRA_REQUIRED_COLS = {
     "StartTime",
     "EndTime",
     "IsActive",
+    "CreatedAt",
+    "CreatedBy"
+  ],
+
+  /**
+   * Students (SIDEP_02_GESTION_ADMIN)
+   * CampusCode, StudentStatusCode y CompletionStatus los pone el sistema.
+   */
+  "Students": [
+    "StudentID",
+    "DocumentType",
+    "DocumentNumber",
+    "StudentType",
+    "FirstName",
+    "LastName",
+    "Email",
+    "CohortCode",
+    "ProgramCode",
+    "CampusCode",
+    "StudentStatusCode",
+    "CompletionStatus",
+    "CreatedAt",
+    "CreatedBy"
+  ],
+
+  /**
+   * Enrollments (SIDEP_02_GESTION_ADMIN)
+   * AperturaID es opcional (vacío en Fase 1).
+   */
+  "Enrollments": [
+    "EnrollmentID",
+    "StudentID",
+    "DeploymentID",
+    "EntryCohortCode",
+    "WindowCohortCode",
+    "MomentCode",
+    "AttemptNumber",
+    "EnrollmentStatusCode",
     "CreatedAt",
     "CreatedBy"
   ]

@@ -152,7 +152,8 @@ const SIDEP_CONFIG = {
     bi:              "SIDEP_03_BI_DASHBOARD",
     staging:         "SIDEP_04_STAGING_SETUP",
     stagingAperturas:"SIDEP_STAGING_APERTURAS",
-    stagingDocentes: "SIDEP_STG_DOCENTES"
+    stagingDocentes:    "SIDEP_STG_DOCENTES",
+    stagingEstudiantes: "SIDEP_STG_ESTUDIANTES"
   },
 
   // Estilo de encabezados — aplica a todas las tablas via configurarTablas_()
@@ -180,6 +181,7 @@ const SIDEP_CONFIG = {
   propKeys: {
     rootFolderId:       "sidep_rootFolderId",        // ID de la carpeta raíz en caché O(1)
     stagingAperturasId: "sidep_stagingAperturasId",  // ID del SS SIDEP_STAGING_APERTURAS
-    stagingDocentesId:  "sidep_stagingDocentesId"    // ID del SS SIDEP_STG_DOCENTES
+    stagingDocentesId:      "sidep_stagingDocentesId",      // ID del SS SIDEP_STG_DOCENTES
+    stagingEstudiantesId:   "sidep_stagingEstudiantesId"    // ID del SS SIDEP_STG_ESTUDIANTES
   }
 };

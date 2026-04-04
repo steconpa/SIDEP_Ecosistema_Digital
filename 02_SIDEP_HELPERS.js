@@ -202,13 +202,13 @@ function getSpreadsheetByName(fileKey) {
   if (!fileName) {
     throw new Error(
       "fileKey inválido: '" + fileKey + "'. " +
-      "Usar: core | admin | bi | staging | stagingDocentes"
+      "Usar: core | admin | bi | staging | stagingDocentes | stagingEstudiantes"
     );
   }
   const root       = getRootFolderSafe();
   const folderName = fileKey === "staging"
     ? SIDEP_CONFIG.stagingFolderName
-    : fileKey === "stagingDocentes"
+    : (fileKey === "stagingDocentes" || fileKey === "stagingEstudiantes")
       ? SIDEP_CONFIG.stagingAcademicoFolderName
       : SIDEP_CONFIG.dbFolderName;
   const targetFolder = getSubFolder(root, folderName);
@@ -836,7 +836,12 @@ function _resolverTipoColumna_(tableName, colName, colIndex, catalogCache) {
                              STAGING_ACADEMICO_COLUMN_TYPES[tableName])
     ? STAGING_ACADEMICO_COLUMN_TYPES[tableName]
     : {};
-  const typeDef = mainTypes[colName] || stagingTypes[colName] || stagingAcadTypes[colName];
+  const stagingEstTypes = (typeof STAGING_ESTUDIANTES_COLUMN_TYPES !== "undefined" &&
+                            STAGING_ESTUDIANTES_COLUMN_TYPES[tableName])
+    ? STAGING_ESTUDIANTES_COLUMN_TYPES[tableName]
+    : {};
+  const typeDef = mainTypes[colName] || stagingTypes[colName] ||
+                  stagingAcadTypes[colName] || stagingEstTypes[colName];
   if (!typeDef) return null; // TEXT default
 
   if (typeDef.type === "DROPDOWN_INLINE") {
@@ -966,6 +971,29 @@ function _construirCatalogCache_() {
         .map(function(r) { return String(r[iEmail] || "").trim(); })
         .filter(function(v) { return v !== ""; });
     }
+  }
+
+  // ── Students — emails activos para dropdown StudentEmail en STG_MATRICULAS ──
+  // Students vive en SIDEP_02_GESTION_ADMIN (adminSS).
+  try {
+    const adminSS      = getSpreadsheetByName("admin");
+    const hojaStudents = adminSS.getSheetByName("Students");
+    if (hojaStudents && hojaStudents.getLastRow() > 1) {
+      const data    = hojaStudents.getDataRange().getValues();
+      const head    = data[0];
+      const iEmail  = head.indexOf("Email");
+      const iStatus = head.indexOf("StudentStatusCode");
+      if (iEmail !== -1) {
+        cache["Students"] = data.slice(1)
+          .filter(function(r) {
+            return iStatus === -1 || String(r[iStatus] || "").trim() === "ACTIVE";
+          })
+          .map(function(r) { return String(r[iEmail] || "").trim(); })
+          .filter(function(v) { return v !== ""; });
+      }
+    }
+  } catch (e) {
+    Logger.log("  ⚠️  No se pudo cargar Students para catalogCache: " + e.message);
   }
 
   Logger.log("  📦 catalogCache: " + Object.keys(cache).length + " catálogos cargados");
