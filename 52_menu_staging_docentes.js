@@ -17,12 +17,16 @@
  *   ├── ✅ Validar asignaciones (dry-run)
  *   ├── ─────────────────────────
  *   ├── 📋 Ver estado de invitaciones
+ *   ├── ─────────────────────────
+ *   ├── 📧 Notificar docentes (preview)
+ *   ├── 📧 Notificar docentes (enviar)
  *   └── 🔍 Diagnóstico staging
  *
  * DEPENDE DE:
  *   00_SIDEP_CONFIG.gs            → SIDEP_CONFIG.files.stagingDocentes
  *   42_job_procesarStgDocentes.gs → procesarStgDocentes(), procesarStgAsignaciones()
  *   24b_repo_staging_academico.gs → leerStgAsignaciones(), getTableData()
+ *   16b_notificarDocentes.gs      → notificarDocentes()
  * ============================================================
  */
 
@@ -39,6 +43,9 @@ function stagingDocentesOnOpen(e) {
     .addItem("✅ Validar asignaciones (sin escribir)","menuValidarAsignaciones_")
     .addSeparator()
     .addItem("📋 Ver estado de invitaciones",        "menuVerInvitaciones_")
+    .addSeparator()
+    .addItem("📧 Notificar docentes (preview)",      "menuNotificarDocentes_dryRun_")
+    .addItem("📧 Notificar docentes (enviar)",       "menuNotificarDocentes_")
     .addItem("🔍 Diagnóstico staging",               "menuDiagnosticoStaging_")
     .addToUi();
 }
@@ -170,6 +177,40 @@ function menuVerInvitaciones_() {
     SpreadsheetApp.getUi().alert(lineas.join("\n"), SpreadsheetApp.getUi().ButtonSet.OK);
   } catch (e) {
     SpreadsheetApp.getUi().alert("❌ Error:\n" + e.message);
+  }
+}
+
+function menuNotificarDocentes_dryRun_() {
+  try {
+    notificarDocentes({ dryRun: true });
+    SpreadsheetApp.getUi().alert(
+      "✅ Preview completado.\nRevisa el Logger (Extensiones → Apps Script → Registros) para ver los emails que se enviarían.",
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+  } catch (e) {
+    SpreadsheetApp.getUi().alert("❌ Error:\n" + e.message);
+  }
+}
+
+function menuNotificarDocentes_() {
+  const ui   = SpreadsheetApp.getUi();
+  const resp = ui.alert(
+    "SIDEP — Notificar docentes",
+    "Envía un email a cada docente con InvitationStatus=TEACHER_INVITED informando:\n" +
+    "  · Su horario completo (día, hora de inicio/fin, horas/semana)\n" +
+    "  · Links directos a sus aulas en Google Classroom\n" +
+    "  · Recordatorio de aceptar la invitación\n\n" +
+    "⚠️  Esto enviará emails reales. El proceso también corre automáticamente\n" +
+    "al final de 'Procesar asignaciones a aulas'.\n\n" +
+    "¿Continuar?",
+    ui.ButtonSet.YES_NO
+  );
+  if (resp !== ui.Button.YES) return;
+  try {
+    notificarDocentes();
+    ui.alert("✅ Notificaciones enviadas.\nRevisa el Logger para el detalle.", ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert("❌ Error:\n" + e.message);
   }
 }
 

@@ -14,7 +14,7 @@
  *     DEACTIVATE: TeacherStatusCode → TEACHER_INACTIVE
  *
  *   procesarStgAsignaciones() → STG_ASIGNACIONES → TeacherAssignments + Classroom
- *     ASSIGN: TeacherAssignment + Classroom.Invitations.create()
+ *     ASSIGN: TeacherAssignment + Classroom.Invitations.create() + notificarDocentes()
  *     REMOVE: Courses.Teachers.delete() + IsActive=false
  *
  * DEPENDE DE:
@@ -243,6 +243,19 @@ function procesarStgAsignaciones(options) {
     Logger.log("   " + logMsg);
     if (res.asignados > 0) {
       Logger.log("   ⚠️  Los docentes deben ACEPTAR la invitación por email para aparecer en el aula.");
+    }
+
+    // Notificar docentes recién invitados — NO esperar a que acepten
+    if (res.invitacionesOk > 0) {
+      Logger.log("\n── Notificando docentes (" + res.invitacionesOk + " invitaciones nuevas) ──");
+      try {
+        notificarDocentes();
+      } catch (eNotif) {
+        // No abortar el job si la notificación falla
+        Logger.log("  ⚠️  notificarDocentes falló: " + eNotif.message);
+        registrarStgDocentesLog({ stageEntityType: "ASIGNACION", stageRecordId: "BATCH",
+          action: "NOTIFY", result: "ERROR", message: eNotif.message });
+      }
     }
 
   } catch (e) {
