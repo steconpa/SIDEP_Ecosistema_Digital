@@ -71,7 +71,17 @@ function procesarStgDocentes(options) {
       }
     });
 
-    // Persistir IDs generados en la hoja ANTES de usarlos como clave.
+    // Auto-rellenar RequestedBy / RequestedAt si el staff los dejó vacíos
+    rows.forEach(function(row) {
+      if (!String(row[mem.idx["RequestedBy"]] || "").trim()) {
+        row[mem.idx["RequestedBy"]] = usuario;
+      }
+      if (!String(row[mem.idx["RequestedAt"]] || "").trim()) {
+        row[mem.idx["RequestedAt"]] = ahora;
+      }
+    });
+
+    // Persistir IDs y campos auto-rellenados en la hoja ANTES de usarlos como clave.
     // actualizarStgDocente() re-lee la hoja en cada llamada — si los IDs
     // solo existen en memoria, findIndex() devuelve -1 y el update falla.
     _escribirEnBatch_(mem.hoja, mem);
@@ -116,6 +126,7 @@ function procesarStgDocentes(options) {
           actualizarStgDocente(id, {
             StageStatus:       ok ? "PROMOTED" : "ERROR",
             ValidationMessage: ok ? "" : res.errores.filter(function(e) { return e.indexOf(email) !== -1; }).join(" | "),
+            TargetTeacherID:   res.emailToNewId[email] || "",
             ProcessedAt:       ahora,
             ProcessedBy:       usuario
           });

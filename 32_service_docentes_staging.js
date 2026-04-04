@@ -77,10 +77,11 @@ function procesarDocentesDesdeStaging(opts) {
     if (email) emailIdx[email] = i;
   });
 
-  const inserts     = [];
-  const errores     = [];
-  let   actualizados = 0;
-  let   desactivados = 0;
+  const inserts       = [];
+  const errores       = [];
+  const emailToNewId  = {};   // email → TeacherID generado (solo REGISTER exitosos)
+  let   actualizados  = 0;
+  let   desactivados  = 0;
 
   opts.rows.forEach(function(row) {
     const accion = String(row[opts.idx["RequestedAction"]] || "").trim().toUpperCase();
@@ -92,12 +93,14 @@ function procesarDocentesDesdeStaging(opts) {
         if (emailIdx.hasOwnProperty(email)) {
           throw new Error("Email ya existe en Teachers — usar UPDATE.");
         }
-        const nueva = _construirFilaTeacher_(row, opts.idx, mem, uuid("tch"), ahora, usuario);
+        const newId = uuid("tch");
+        const nueva = _construirFilaTeacher_(row, opts.idx, mem, newId, ahora, usuario);
         _validarFilaMaestra_("Teachers", nueva, mem.colIdx);  // lanza Error si hay campo obligatorio vacío
         inserts.push(nueva);
         mem.datos.push(nueva);
         emailIdx[email] = mem.datos.length - 1;
-        Logger.log("  + REGISTER: " + email);
+        emailToNewId[email] = newId;
+        Logger.log("  + REGISTER: " + email + " → " + newId);
 
       } else if (accion === "UPDATE") {
         if (!emailIdx.hasOwnProperty(email)) {
@@ -145,7 +148,8 @@ function procesarDocentesDesdeStaging(opts) {
     insertados:   inserts.length,
     actualizados: actualizados,
     desactivados: desactivados,
-    errores:      errores
+    errores:      errores,
+    emailToNewId: emailToNewId   // { email → TeacherID } para escribir TargetTeacherID en staging
   };
 }
 
