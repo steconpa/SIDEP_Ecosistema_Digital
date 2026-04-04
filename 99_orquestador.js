@@ -998,3 +998,84 @@ function paso8_reenviar() {
   Logger.log("▶ PASO 8 REENVÍO: Enviando a " + emailDestino + "...");
   notificarEstudiante_individual(emailDestino);
 }
+
+
+// ─────────────────────────────────────────────────────────────
+// CATÁLOGOS — Cohortes históricos ART (2025)
+//
+// FB25 y AG25 son cohortes de ENTRADA de estudiantes articulados
+// que empezaron en 2025 y ahora cursan en ventanas 2026 (MR26/AB26).
+// No existían en el bootstrap inicial — se agregan aquí para que
+// Students.CohortCode y Enrollments.EntryCohortCode sean válidos.
+//
+// Flujo de uso:
+//   1. paso_agregarCohorte_FB25()   → agrega FB25 a _CFG_COHORTS
+//   2. paso_agregarCohorte_AG25()   → agrega AG25 a _CFG_COHORTS
+//   3. paso_aplicarTipos()          → refresca dropdowns en todos los SS
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Agrega el cohorte de entrada ART Febrero 2025 (FB25).
+ * Estudiantes que ingresaron al colegio en Feb-2025 y ahora cursan
+ * asignaturas de la ventana MR26/AB26.
+ * Idempotente — seguro de re-ejecutar.
+ */
+function paso_agregarCohorte_FB25() {
+  Logger.log("▶ CATALOGO: Agregando cohorte FB25 (Febrero 2025 · ART)...");
+  agregarCohorte({
+    code    : "FB25",
+    label   : "Febrero 2025",
+    year    : 2025,
+    modality: "ART",
+    isActive: true,
+    notes   : "Cohorte de entrada ART historico. Ventana activa: MR26/AB26."
+  });
+  Logger.log("OK FB25 agregado a _CFG_COHORTS.");
+}
+
+/**
+ * Agrega el cohorte de entrada ART Agosto 2025 (AG25).
+ * Estudiantes que ingresaron al colegio en Ago-2025 y ahora cursan
+ * asignaturas de la ventana MR26/AB26.
+ * Idempotente — seguro de re-ejecutar.
+ */
+function paso_agregarCohorte_AG25() {
+  Logger.log("▶ CATALOGO: Agregando cohorte AG25 (Agosto 2025 · ART)...");
+  agregarCohorte({
+    code    : "AG25",
+    label   : "Agosto 2025",
+    year    : 2025,
+    modality: "ART",
+    isActive: true,
+    notes   : "Cohorte de entrada ART historico. Ventana activa: MR26/AB26."
+  });
+  Logger.log("OK AG25 agregado a _CFG_COHORTS.");
+}
+
+/**
+ * Agrega FB25 y AG25 en una sola ejecución y refresca dropdowns.
+ * Recomendado para uso en producción — una sola llamada, resultado completo.
+ */
+function paso_agregarCohortes_2025() {
+  Logger.log("▶ CATALOGO: Agregando cohortes historicos 2025...");
+  paso_agregarCohorte_FB25();
+  paso_agregarCohorte_AG25();
+  Logger.log("▶ CATALOGO: Refrescando dropdowns en el ecosistema...");
+  aplicarTiposPostBootstrap();
+  Logger.log("OK Cohortes 2025 agregados. Ejecuta 'Actualizar listados' en STG_ESTUDIANTES.");
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// ATAJOS INDIVIDUALES
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Refresca todos los dropdowns del ecosistema (core + admin + bi).
+ * Usar después de agregar cohortes o modificar catálogos.
+ */
+function paso_aplicarTipos() {
+  Logger.log("▶ TIPOS: Aplicando dropdowns en ecosistema completo...");
+  aplicarTiposPostBootstrap();
+  Logger.log("OK Tipos aplicados.");
+}
