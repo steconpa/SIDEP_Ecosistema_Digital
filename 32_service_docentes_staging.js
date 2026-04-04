@@ -230,7 +230,10 @@ function procesarAsignacionesDesdeStaging(opts) {
           false,          // IsActive — false hasta que el docente acepte la invitación
           ahora, usuario,
           resultado.invitationId,
-          "TEACHER_INVITED"
+          "TEACHER_INVITED",
+          String(row[opts.idx["DayOfWeek"]]  || "").trim(),
+          String(row[opts.idx["StartTime"]]  || "").trim(),
+          String(row[opts.idx["EndTime"]]    || "").trim()
         ];
         _validarFilaMaestra_("TeacherAssignments", filaAsig, memAsig.colIdx);
         filasNuevas.push(filaAsig);
@@ -339,6 +342,10 @@ function validarAsignacionesStaging(rows, idx) {
       }
       const horas = Number(row[idx["WeeklyHours"]] || 0);
       if (isNaN(horas) || horas < 1) throw new Error(ctx + ": WeeklyHours inválidas.");
+      const dia = String(row[idx["DayOfWeek"]] || "").trim();
+      if (!dia) throw new Error(ctx + ": DayOfWeek vacío.");
+      if (!row[idx["StartTime"]]) throw new Error(ctx + ": StartTime vacío.");
+      if (!row[idx["EndTime"]])   throw new Error(ctx + ": EndTime vacío.");
     }
   });
 }

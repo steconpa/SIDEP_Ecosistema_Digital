@@ -502,7 +502,10 @@ const ADMIN_TABLES = {
     "CreatedAt",
     "CreatedBy",
     "InvitationID",         // v4.1.0 — ID de Classroom.Invitations.create()
-    "InvitationStatus"      // v4.1.0 — ref _CFG_STATUSES (StatusType=INVITATION)
+    "InvitationStatus",     // v4.1.0 — ref _CFG_STATUSES (StatusType=INVITATION)
+    "DayOfWeek",            // v4.3.0 — día de clase: LUNES..SABADO
+    "StartTime",            // v4.3.0 — hora inicio formato HH:mm (ej. "07:00")
+    "EndTime"               // v4.3.0 — hora fin   formato HH:mm (ej. "09:00")
   ],
 
   // Contactos de estudiantes — FIX-37 v3.3.0.
@@ -845,9 +848,10 @@ const COLUMN_TYPES = {
   },
 
   "TeacherAssignments": {
-    "CampusCode":       { type: "DROPDOWN_CAT", source: "_CFG_CAMPUSES" },
-    "ContractTypeCode": { type: "DROPDOWN_CAT", source: "_CFG_STATUSES", statusType: "CONTRACT" },
-    "InvitationStatus": { type: "DROPDOWN_CAT", source: "_CFG_STATUSES", statusType: "INVITATION" }
+    "CampusCode":       { type: "DROPDOWN_CAT",    source: "_CFG_STATUSES", statusType: "CONTRACT" },
+    "ContractTypeCode": { type: "DROPDOWN_CAT",    source: "_CFG_STATUSES", statusType: "CONTRACT" },
+    "InvitationStatus": { type: "DROPDOWN_CAT",    source: "_CFG_STATUSES", statusType: "INVITATION" },
+    "DayOfWeek":        { type: "DROPDOWN_INLINE", values: ["LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO"] }
   },
 
   "StudentContacts": {

@@ -154,6 +154,9 @@ const STAGING_ACADEMICO_TABLES = {
     "SubjectCode",
     "CohortCode",
     "MomentCode",
+    "DayOfWeek",             // día de clase — fuente única para docentes y estudiantes
+    "StartTime",             // hora inicio HH:mm
+    "EndTime",               // hora fin   HH:mm
     "WeeklyHours",
     "StartDate",
     "EndDate",
@@ -198,11 +201,13 @@ const STAGING_ACADEMICO_COLUMN_TYPES = {
   "STG_ASIGNACIONES": {
     "RequestedAction": { type: "DROPDOWN_INLINE", values: ["ASSIGN", "REMOVE"] },
     // Campos de lookup — listan valores activos de las tablas maestras
-    "TeacherEmail": { type: "DROPDOWN_CAT", source: "Teachers" },
-    "ProgramCode":  { type: "DROPDOWN_CAT", source: "_CFG_PROGRAMS" },
-    "SubjectCode":  { type: "DROPDOWN_CAT", source: "_CFG_SUBJECTS" },
-    "CohortCode":   { type: "DROPDOWN_CAT", source: "_CFG_COHORTS" },
-    "MomentCode":   { type: "DROPDOWN_CAT", source: "_CFG_MOMENTS" },
+    "TeacherEmail": { type: "DROPDOWN_CAT",    source: "Teachers" },
+    "ProgramCode":  { type: "DROPDOWN_CAT",    source: "_CFG_PROGRAMS" },
+    "SubjectCode":  { type: "DROPDOWN_CAT",    source: "_CFG_SUBJECTS" },
+    "CohortCode":   { type: "DROPDOWN_CAT",    source: "_CFG_COHORTS" },
+    "MomentCode":   { type: "DROPDOWN_CAT",    source: "_CFG_MOMENTS" },
+    // Horario
+    "DayOfWeek":    { type: "DROPDOWN_INLINE", values: ["LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO"] },
     // Campos de control
     "ApprovalStatus": { type: "DROPDOWN_INLINE", values: ["SUBMITTED", "APPROVED", "REJECTED"] },
     "StageStatus":    { type: "DROPDOWN_INLINE", values: ["PENDING", "VALIDATED", "PROMOTED", "ERROR"] }
@@ -237,6 +242,9 @@ const STAGING_ACADEMICO_EDITABLE_COLUMNS = {
     "SubjectCode",
     "CohortCode",
     "MomentCode",
+    "DayOfWeek",
+    "StartTime",
+    "EndTime",
     "WeeklyHours",
     "StartDate",
     "EndDate",
@@ -284,6 +292,9 @@ const MAESTRA_REQUIRED_COLS = {
     "DeploymentID",
     "CampusCode",
     "WeeklyHours",
+    "DayOfWeek",
+    "StartTime",
+    "EndTime",
     "IsActive",
     "CreatedAt",
     "CreatedBy"
