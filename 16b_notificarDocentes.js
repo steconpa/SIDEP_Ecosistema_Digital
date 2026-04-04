@@ -40,7 +40,7 @@
 // ── Constantes ────────────────────────────────────────────────
 
 var NOTIF_DOC_REMITENTE = "SIDEP Ecosistema Digital";
-var NOTIF_DOC_ASUNTO    = "📋 Tu horario de clases SIDEP — aulas asignadas";
+var NOTIF_DOC_ASUNTO    = "Tu horario de clases SIDEP \u2014 aulas asignadas";
 
 var DIAS_LABEL = {
   "LUNES":     "Lunes",
@@ -267,9 +267,9 @@ function _agruparPorDocente_(memAsig, tchIdx, deplIdx) {
 
     if (!tch || !tch.email || !depl || !depl.classroomId) return;
 
-    var dia        = String(f[c["DayOfWeek"]]  || "").trim();
-    var startTime  = String(f[c["StartTime"]]  || "").trim();
-    var endTime    = String(f[c["EndTime"]]    || "").trim();
+    var dia         = String(f[c["DayOfWeek"]]  || "").trim();
+    var startTime   = _formatearTiempoNotif_(f[c["StartTime"]]);
+    var endTime     = _formatearTiempoNotif_(f[c["EndTime"]]);
     var weeklyHours = Number(f[c["WeeklyHours"]] || 0);
     var link       = "https://classroom.google.com/c/" + depl.classroomId;
 
@@ -304,6 +304,35 @@ function _agruparPorDocente_(memAsig, tchIdx, deplIdx) {
 }
 
 
+// ── Formateo de tiempo ────────────────────────────────────────
+
+/**
+ * Convierte un valor de tiempo a "HH:mm".
+ * Sheets devuelve tiempos como Date(1899-12-30 HH:MM) — no como string.
+ * También soporta strings "HH:mm" ya formateados (data nueva).
+ */
+function _formatearTiempoNotif_(val) {
+  if (!val && val !== 0) return "";
+  if (val instanceof Date) {
+    var h = val.getHours();
+    var m = val.getMinutes();
+    return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
+  }
+  var s = String(val).trim();
+  // Ya en formato HH:mm — devolver directo
+  if (/^\d{1,2}:\d{2}$/.test(s)) return s;
+  // Llegó como toString() de Date (bug de datos anteriores) — re-parsear
+  try {
+    var d = new Date(s);
+    if (!isNaN(d.getTime())) {
+      var h2 = d.getHours(), m2 = d.getMinutes();
+      return (h2 < 10 ? "0" : "") + h2 + ":" + (m2 < 10 ? "0" : "") + m2;
+    }
+  } catch (e) { /* ignorar */ }
+  return s;
+}
+
+
 // ── Construcción del email ────────────────────────────────────
 
 function _construirEmailDocente_(info) {
@@ -320,11 +349,11 @@ function _construirEmailDocente_(info) {
 
         // Horario
         '<div style="font-size:13px;color:#555;margin-bottom:10px;">' +
-          '🗓️ <strong>' + a.diaLabel + '</strong>' +
-          ' &nbsp;·&nbsp; ' +
-          '⏰ ' + a.startTime + ' – ' + a.endTime +
-          ' &nbsp;·&nbsp; ' +
-          '📚 ' + a.weeklyHours + ' h/sem' +
+          '<strong>' + a.diaLabel + '</strong>' +
+          ' &nbsp;&middot;&nbsp; ' +
+          a.startTime + ' &ndash; ' + a.endTime +
+          ' &nbsp;&middot;&nbsp; ' +
+          a.weeklyHours + ' h/sem' +
         '</div>' +
 
         // Link directo
@@ -332,7 +361,7 @@ function _construirEmailDocente_(info) {
            'style="display:inline-block;background:#1a3c5e;color:#ffffff;' +
                   'text-decoration:none;padding:8px 20px;border-radius:6px;' +
                   'font-size:14px;font-weight:600;">' +
-          '🔗 Ir al aula' +
+          'Ir al aula &rarr;' +
         '</a>' +
 
       '</td>' +
@@ -355,7 +384,7 @@ function _construirEmailDocente_(info) {
     // Saludo
     '<div style="padding:28px 24px 16px;">' +
       '<p style="margin:0 0 8px;font-size:18px;color:#1a3c5e;font-weight:700;">' +
-        'Hola, ' + info.firstName + ' 👋' +
+        'Hola, ' + info.firstName +
       '</p>' +
       '<p style="margin:0;font-size:15px;color:#444;line-height:1.6;">' +
         'A continuación encontrarás tu horario de clases y los accesos directos ' +
@@ -367,7 +396,7 @@ function _construirEmailDocente_(info) {
     '<div style="margin:0 24px;padding:12px 16px;background:#fff8e1;border-radius:8px;' +
                 'border-left:4px solid #f9a825;">' +
       '<p style="margin:0;font-size:14px;color:#444;">' +
-        '<strong>⚠️ Acción requerida:</strong> Debes <strong>aceptar la invitación</strong> ' +
+        '<strong>Acción requerida:</strong> Debes <strong>aceptar la invitación</strong> ' +
         'que Classroom te envió por email para aparecer como co-docente activo en cada aula. ' +
         'Hasta que la aceptes, los estudiantes no te verán como docente del curso.' +
       '</p>' +
