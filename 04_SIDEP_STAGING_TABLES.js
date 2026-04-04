@@ -121,6 +121,7 @@ const STAGING_ACADEMICO_TABLES = {
    */
   "STG_DOCENTES": [
     "StageDocenteID",
+    "RequestedAction",       // staff: REGISTER | UPDATE | DEACTIVATE
     "FirstName",
     "LastName",
     "Email",
@@ -147,6 +148,7 @@ const STAGING_ACADEMICO_TABLES = {
    */
   "STG_ASIGNACIONES": [
     "StageAsignacionID",
+    "RequestedAction",       // staff: ASSIGN | REMOVE
     "TeacherEmail",
     "ProgramCode",
     "SubjectCode",
@@ -186,13 +188,15 @@ const STAGING_ACADEMICO_TABLES = {
 const STAGING_ACADEMICO_COLUMN_TYPES = {
 
   "STG_DOCENTES": {
-    "DocumentType":   { type: "DROPDOWN_INLINE", values: ["CC", "CE", "PA", "NIT", "OTRO"] },
-    "ContractType":   { type: "DROPDOWN_INLINE", values: ["PLANTA", "CONTRATISTA", "HORA_CATEDRA"] },
-    "ApprovalStatus": { type: "DROPDOWN_INLINE", values: ["SUBMITTED", "APPROVED", "REJECTED"] },
-    "StageStatus":    { type: "DROPDOWN_INLINE", values: ["PENDING", "VALIDATED", "PROMOTED", "ERROR"] }
+    "RequestedAction": { type: "DROPDOWN_INLINE", values: ["REGISTER", "UPDATE", "DEACTIVATE"] },
+    "DocumentType":    { type: "DROPDOWN_INLINE", values: ["CC", "CE", "PA", "NIT", "OTRO"] },
+    "ContractType":    { type: "DROPDOWN_INLINE", values: ["PLANTA", "CONTRATISTA", "HORA_CATEDRA"] },
+    "ApprovalStatus":  { type: "DROPDOWN_INLINE", values: ["SUBMITTED", "APPROVED", "REJECTED"] },
+    "StageStatus":     { type: "DROPDOWN_INLINE", values: ["PENDING", "VALIDATED", "PROMOTED", "ERROR"] }
   },
 
   "STG_ASIGNACIONES": {
+    "RequestedAction": { type: "DROPDOWN_INLINE", values: ["ASSIGN", "REMOVE"] },
     // Campos de lookup — listan valores activos de las tablas maestras
     "TeacherEmail": { type: "DROPDOWN_CAT", source: "Teachers" },
     "ProgramCode":  { type: "DROPDOWN_CAT", source: "_CFG_PROGRAMS" },
@@ -214,6 +218,7 @@ const STAGING_ACADEMICO_COLUMN_TYPES = {
 
 const STAGING_ACADEMICO_EDITABLE_COLUMNS = {
   "STG_DOCENTES": [
+    "RequestedAction",
     "FirstName",
     "LastName",
     "Email",
@@ -226,6 +231,7 @@ const STAGING_ACADEMICO_EDITABLE_COLUMNS = {
     "ApprovalStatus"
   ],
   "STG_ASIGNACIONES": [
+    "RequestedAction",
     "TeacherEmail",
     "ProgramCode",
     "SubjectCode",
