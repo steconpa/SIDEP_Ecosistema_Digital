@@ -13,6 +13,8 @@
  *   ├── 👤 Procesar solicitudes de docentes   → procesarStgDocentes()
  *   ├── 🏫 Procesar asignaciones a aulas      → procesarStgAsignaciones()
  *   ├── ─────────────────────────
+ *   ├── 🔄 Actualizar listados (dropdowns)    → menuActualizarListados_()
+ *   ├── ─────────────────────────
  *   ├── ✅ Validar docentes (dry-run)
  *   ├── ✅ Validar asignaciones (dry-run)
  *   ├── ─────────────────────────
@@ -38,6 +40,8 @@ function stagingDocentesOnOpen(e) {
     .createMenu("SIDEP Docentes")
     .addItem("👤 Procesar solicitudes de docentes",  "menuProcesarDocentes_")
     .addItem("🏫 Procesar asignaciones a aulas",     "menuProcesarAsignaciones_")
+    .addSeparator()
+    .addItem("🔄 Actualizar listados (dropdowns)",    "menuActualizarListados_")
     .addSeparator()
     .addItem("✅ Validar docentes (sin escribir)",   "menuValidarDocentes_")
     .addItem("✅ Validar asignaciones (sin escribir)","menuValidarAsignaciones_")
@@ -116,6 +120,22 @@ function menuProcesarAsignaciones_() {
     ui.alert("✅ Proceso completado.\nRevisa STG_DOCENTES_LOG para el detalle.", ui.ButtonSet.OK);
   } catch (e) {
     ui.alert("❌ Error:\n" + e.message);
+  }
+}
+
+function menuActualizarListados_() {
+  const ui = SpreadsheetApp.getUi();
+  try {
+    const ss = getSpreadsheetByName("stagingDocentes");
+    aplicarDropdownsCatalogo(ss, STAGING_ACADEMICO_TABLES);
+    ui.alert(
+      "✅ Listados actualizados.\n\n" +
+      "Los dropdowns de TeacherEmail, ProgramCode, SubjectCode, CohortCode y MomentCode\n" +
+      "ahora reflejan los datos actuales de las tablas maestras.",
+      ui.ButtonSet.OK
+    );
+  } catch (e) {
+    ui.alert("❌ Error al actualizar listados:\n" + e.message);
   }
 }
 
