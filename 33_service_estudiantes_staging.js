@@ -223,29 +223,10 @@ function procesarMatriculasDesdeStaging(opts) {
         // Cohorte de entrada = CohortCode del estudiante en Students
         var entryCohort = _leerCohorteSrv_(memStudents, email);
 
-        var resultado = _invitarEstudianteConRetrySrv_(depl.classroomId, email, logKey);
-        if (resultado.estado === "ERROR") throw new Error("Classroom API error en: " + logKey);
-
-        var invStatus;
-        var isActive;
-        if (resultado.estado === "YA_EXISTIA") {
-          try {
-            Classroom.Courses.Students.get(depl.classroomId, email);
-            invStatus = "STUDENT_ACTIVE";
-            isActive  = true;
-            invYaExistia++;
-            Logger.log("  OK Ya miembro: " + email);
-          } catch (eCheck) {
-            invStatus = "STUDENT_INVITED";
-            isActive  = false;
-            invYaExistia++;
-          }
-        } else {
-          invStatus = "STUDENT_INVITED";
-          isActive  = false;
-          invOk++;
-        }
-
+        // Los estudiantes usan @gmail.com (externo al dominio sidep.edu.co).
+        // Classroom.Invitations.create() falla con UntrustedDomain para cuentas
+        // externas — no se usa. El estudiante se une al aula con el enrollmentCode
+        // link (?cjc=code) que recibe en el email de notificación.
         var attempt = Number(row[opts.idx["AttemptNumber"]] || 1);
         var filaEnr = _construirFilaEnrollment_(
           studentId, depl.id, entryCohort, coh, mom, attempt,
@@ -254,11 +235,15 @@ function procesarMatriculasDesdeStaging(opts) {
         _validarFilaMaestra_("Enrollments", filaEnr, memEnroll.colIdx);
         filasNuevas.push(filaEnr);
         enrollExist[enrollKey] = true;
-        Logger.log("  + ENROLL: " + ctx + " [" + invStatus + "]");
+        invOk++;
+        Logger.log("  + ENROLL: " + ctx);
 
       } else if (accion === "DROP") {
+        // Solo marca DROPPED en Enrollments. El estudiante se unió por enrollmentCode
+        // (no por invitación API), así que no hay entrada de Classroom que eliminar
+        // programáticamente desde este contexto. Si se requiere removerlo del aula,
+        // el coordinador lo hace manualmente desde la interfaz de Classroom.
         _darDeBajaEnrollmentSrv_(memEnroll, studentId, depl.id, ahora, usuario);
-        _removerEstudianteClassroom_(depl.classroomId, email, logKey);
         dadosDeBaja++;
         Logger.log("  x DROP: " + ctx);
 
@@ -492,6 +477,13 @@ function _invitarEstudianteConRetrySrv_(classroomId, email, logKey) {
       var msg = e.message || String(e);
       if (msg.indexOf("409") !== -1 || msg.toLowerCase().indexOf("already") !== -1) {
         return { estado: "YA_EXISTIA", invitationId: "" };
+      }
+      // Dominio no confiable — falla inmediata, no tiene sentido reintentar.
+      // Solución: Admin Console → Classroom → Configuración de uso compartido
+      //           → "Quién puede unirse" → "Cualquier usuario de Google"
+      if (msg.indexOf("UntrustedDomain") !== -1 || msg.indexOf("untrusted") !== -1) {
+        Logger.log("  !! Dominio no confiable (@gmail.com bloqueado por Workspace Admin): " + email);
+        return { estado: "DOMINIO_NO_CONFIABLE", invitationId: "" };
       }
       if (msg.indexOf("403") !== -1 || msg.toLowerCase().indexOf("permission") !== -1) {
         Logger.log("  !! 403 sin permiso: " + email + " -> " + logKey);
