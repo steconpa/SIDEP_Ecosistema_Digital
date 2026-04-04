@@ -93,6 +93,7 @@ function procesarDocentesDesdeStaging(opts) {
           throw new Error("Email ya existe en Teachers — usar UPDATE.");
         }
         const nueva = _construirFilaTeacher_(row, opts.idx, mem, uuid("tch"), ahora, usuario);
+        _validarFilaMaestra_("Teachers", nueva, mem.colIdx);  // lanza Error si hay campo obligatorio vacío
         inserts.push(nueva);
         mem.datos.push(nueva);
         emailIdx[email] = mem.datos.length - 1;
@@ -219,8 +220,8 @@ function procesarAsignacionesDesdeStaging(opts) {
         if (resultado.estado === "YA_EXISTIA") invYaExistia++;
         else invOk++;
 
-        const contrato = _leerContratoDocente_(memTeachers, email);
-        filasNuevas.push([
+        const contrato   = _leerContratoDocente_(memTeachers, email);
+        const filaAsig   = [
           uuid("asg"), teacherId, depl.id, SIDEP_CONFIG.defaultCampus,
           Number(row[opts.idx["WeeklyHours"]] || 0),
           _parseFechaSrv_(row[opts.idx["StartDate"]]),
@@ -230,7 +231,9 @@ function procesarAsignacionesDesdeStaging(opts) {
           ahora, usuario,
           resultado.invitationId,
           "TEACHER_INVITED"
-        ]);
+        ];
+        _validarFilaMaestra_("TeacherAssignments", filaAsig, memAsig.colIdx);
+        filasNuevas.push(filaAsig);
         asigExist[teacherId + "_" + depl.id] = true;
         Logger.log("  ✉️  ASSIGN: " + ctx);
 
@@ -543,6 +546,33 @@ function _removerDocteaherClassroom_(classroomId, email, logKey) {
 // ════════════════════════════════════════════════════════════
 // HELPERS — Utilidades
 // ════════════════════════════════════════════════════════════
+
+/**
+ * Valida que todos los campos obligatorios de una fila maestra tengan valor.
+ * Compara contra MAESTRA_REQUIRED_COLS[tableName] (definido en 04_SIDEP_STAGING_TABLES).
+ * Lanza Error con la lista de columnas vacías — el servicio lo captura por fila
+ * y lo escribe en ValidationMessage de staging sin abortar el lote completo.
+ *
+ * @param {string}   tableName — "Teachers" | "TeacherAssignments"
+ * @param {Array}    fila      — array de valores ya construido
+ * @param {object}   colIdx    — { colName: colIndex } de la tabla maestra
+ */
+function _validarFilaMaestra_(tableName, fila, colIdx) {
+  const requeridas = (typeof MAESTRA_REQUIRED_COLS !== "undefined" &&
+                      MAESTRA_REQUIRED_COLS[tableName]) || [];
+  const vacias = requeridas.filter(function(col) {
+    const i = colIdx[col];
+    if (i === undefined) return true;                    // columna no existe en la hoja — bug de schema
+    const val = fila[i];
+    return val === null || val === undefined || String(val).trim() === "";
+  });
+  if (vacias.length > 0) {
+    throw new Error(
+      "Campos obligatorios vacíos en " + tableName + ": " + vacias.join(", ")
+    );
+  }
+}
+
 
 function _parseFechaSrv_(fechaStr) {
   if (!fechaStr) return "";

@@ -245,3 +245,47 @@ const STAGING_ACADEMICO_EDITABLE_COLUMNS = {
   ],
   "STG_DOCENTES_LOG": []
 };
+
+
+// ============================================================
+// COLUMNAS REQUERIDAS EN TABLAS MAESTRAS
+// Usado por _validarFilaMaestra_() antes de cada INSERT/UPDATE.
+// Si alguna de estas columnas queda vacía, el servicio rechaza
+// la fila con ValidationMessage descriptivo — nunca escribe
+// datos incompletos en las maestras.
+// ============================================================
+
+const MAESTRA_REQUIRED_COLS = {
+
+  /**
+   * Teachers (SIDEP_01_CORE_ACADEMICO)
+   * CampusCode y TeacherStatusCode los pone el sistema —
+   * también se validan para detectar bugs en el servicio.
+   */
+  "Teachers": [
+    "TeacherID",
+    "FirstName",
+    "LastName",
+    "Email",
+    "DocumentType",
+    "DocumentNumber",
+    "CampusCode",
+    "TeacherStatusCode",
+    "CreatedAt",
+    "CreatedBy"
+  ],
+
+  /**
+   * TeacherAssignments (SIDEP_02_GESTION_ADMIN)
+   */
+  "TeacherAssignments": [
+    "AssignmentID",
+    "TeacherID",
+    "DeploymentID",
+    "CampusCode",
+    "WeeklyHours",
+    "IsActive",
+    "CreatedAt",
+    "CreatedBy"
+  ]
+};
