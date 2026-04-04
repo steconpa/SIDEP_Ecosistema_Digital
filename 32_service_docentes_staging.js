@@ -236,8 +236,8 @@ function procesarAsignacionesDesdeStaging(opts) {
           resultado.invitationId,
           "TEACHER_INVITED",
           String(row[opts.idx["DayOfWeek"]]  || "").trim(),
-          String(row[opts.idx["StartTime"]]  || "").trim(),
-          String(row[opts.idx["EndTime"]]    || "").trim()
+          _parseTiempoSrv_(row[opts.idx["StartTime"]]),
+          _parseTiempoSrv_(row[opts.idx["EndTime"]])
         ];
         _validarFilaMaestra_("TeacherAssignments", filaAsig, memAsig.colIdx);
         filasNuevas.push(filaAsig);
@@ -584,6 +584,20 @@ function _validarFilaMaestra_(tableName, fila, colIdx) {
   }
 }
 
+
+/**
+ * Convierte un valor de tiempo (Date de Sheets o string) a formato "HH:mm".
+ * Sheets almacena "7:30 PM" como Date con fecha base 1899-12-30 19:30:00.
+ */
+function _parseTiempoSrv_(val) {
+  if (!val && val !== 0) return "";
+  if (val instanceof Date) {
+    var h = val.getHours();
+    var m = val.getMinutes();
+    return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
+  }
+  return String(val).trim();
+}
 
 function _parseFechaSrv_(fechaStr) {
   if (!fechaStr) return "";
