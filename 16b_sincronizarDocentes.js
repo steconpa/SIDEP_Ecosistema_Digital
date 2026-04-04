@@ -164,15 +164,29 @@ function sincronizarInvitaciones(opts) {
 
       conteo.verificadas++;
 
-      if (!invId) {
-        Logger.log('  ⚠️  Fila ' + (rowIdx + 2) + ': sin InvitationID — omitida');
-        return;
-      }
-
       var courseId = deplIdx[deplId];
       if (!courseId) {
         Logger.log('  ⚠️  Fila ' + (rowIdx + 2) + ': DeploymentID ' + deplId +
                    ' sin ClassroomID — omitida');
+        return;
+      }
+
+      var emailDocente = tchEmailIdx[tchId] || tchId;
+
+      // Sin InvitationID: el docente es owner o ya era miembro cuando se procesó.
+      // Ir directo al check Teachers.get() sin pasar por Invitations.get().
+      if (!invId) {
+        Logger.log('  ℹ️  Fila ' + (rowIdx + 2) + ': sin InvitationID (posible owner) — ' +
+                   'verificando membresía directa para ' + emailDocente);
+        try {
+          Classroom.Courses.Teachers.get(courseId, emailDocente);
+          conteo.aceptadas++;
+          Logger.log('  ✅ ACEPTADA (owner/ya-miembro): ' + emailDocente);
+          modificadas.push({ rowIdx: rowIdx, nuevoStatus: 'TEACHER_ACCEPTED', isActive: true });
+        } catch (eOwner) {
+          Logger.log('  ⚠️  No encontrado en el aula: ' + emailDocente +
+                     ' — se deja como TEACHER_INVITED para reintento manual.');
+        }
         return;
       }
 
@@ -196,7 +210,6 @@ function sincronizarInvitaciones(opts) {
         }
 
         // 404 → invitación consumida → determinar ACEPTADA o RECHAZADA
-        var emailDocente = tchEmailIdx[tchId] || tchId;
         var nuevoStatus, isActive;
 
         try {

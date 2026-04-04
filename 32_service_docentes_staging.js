@@ -221,8 +221,25 @@ function procesarAsignacionesDesdeStaging(opts) {
 
         const resultado = _invitarCoTeacherConRetrySrv_(depl.classroomId, email, logKey);
         if (resultado.estado === "ERROR") throw new Error("Classroom API error en: " + logKey);
-        if (resultado.estado === "YA_EXISTIA") invYaExistia++;
-        else invOk++;
+
+        // Determinar si ya es miembro activo (owner o invitación previa aceptada)
+        let invStatus = "TEACHER_INVITED";
+        let isActive  = false;
+        if (resultado.estado === "YA_EXISTIA") {
+          // Verificar si ya está en el aula como teacher
+          try {
+            Classroom.Courses.Teachers.get(depl.classroomId, email);
+            invStatus = "TEACHER_ACCEPTED";
+            isActive  = true;
+            invYaExistia++;
+            Logger.log("  ✔  Ya miembro (owner/aceptado): " + email);
+          } catch (eCheck) {
+            // No está en el aula — invitación anterior pendiente
+            invYaExistia++;
+          }
+        } else {
+          invOk++;
+        }
 
         const contrato   = _leerContratoDocente_(memTeachers, email);
         const filaAsig   = [
@@ -231,10 +248,10 @@ function procesarAsignacionesDesdeStaging(opts) {
           _parseFechaSrv_(row[opts.idx["StartDate"]]),
           _parseFechaSrv_(row[opts.idx["EndDate"]]),
           contrato,
-          false,          // IsActive — false hasta que el docente acepte la invitación
+          isActive,
           ahora, usuario,
           resultado.invitationId,
-          "TEACHER_INVITED",
+          invStatus,
           String(row[opts.idx["DayOfWeek"]]  || "").trim(),
           _parseTiempoSrv_(row[opts.idx["StartTime"]]),
           _parseTiempoSrv_(row[opts.idx["EndTime"]])
