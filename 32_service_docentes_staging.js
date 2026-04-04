@@ -583,8 +583,19 @@ function _validarFilaMaestra_(tableName, fila, colIdx) {
 
 function _parseFechaSrv_(fechaStr) {
   if (!fechaStr) return "";
+  // Sheets entrega fechas como objetos Date — devolverlos directamente
+  if (fechaStr instanceof Date) return isNaN(fechaStr.getTime()) ? "" : fechaStr;
   try {
-    const d = Utilities.parseDate(String(fechaStr).trim(), SIDEP_CONFIG.timezone, "yyyy-MM-dd");
+    const str = String(fechaStr).trim();
+    if (!str) return "";
+    // Intentar yyyy-MM-dd (ISO)
+    var d = Utilities.parseDate(str, SIDEP_CONFIG.timezone, "yyyy-MM-dd");
+    if (!isNaN(d.getTime())) return d;
+    // Intentar M/d/yyyy (formato US que muestra Sheets al convertir a string)
+    d = Utilities.parseDate(str, SIDEP_CONFIG.timezone, "M/d/yyyy");
+    if (!isNaN(d.getTime())) return d;
+    // Intentar dd/MM/yyyy (formato colombiano)
+    d = Utilities.parseDate(str, SIDEP_CONFIG.timezone, "dd/MM/yyyy");
     return isNaN(d.getTime()) ? "" : d;
   } catch (e) { return ""; }
 }

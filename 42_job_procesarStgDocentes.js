@@ -71,6 +71,11 @@ function procesarStgDocentes(options) {
       }
     });
 
+    // Persistir IDs generados en la hoja ANTES de usarlos como clave.
+    // actualizarStgDocente() re-lee la hoja en cada llamada — si los IDs
+    // solo existen en memoria, findIndex() devuelve -1 y el update falla.
+    _escribirEnBatch_(mem.hoja, mem);
+
     Logger.log("  STG_DOCENTES APPROVED/PENDING: " + rows.length);
     if (rows.length === 0) {
       Logger.log("  ℹ️  Sin filas pendientes.");
@@ -181,6 +186,9 @@ function procesarStgAsignaciones(options) {
         row[mem.idx["StageAsignacionID"]] = uuid("stgasig");
       }
     });
+
+    // Persistir IDs generados en la hoja ANTES de usarlos como clave.
+    _escribirEnBatch_(mem.hoja, mem);
 
     Logger.log("  STG_ASIGNACIONES APPROVED/PENDING: " + rows.length);
     if (rows.length === 0) {
