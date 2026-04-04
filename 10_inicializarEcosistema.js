@@ -125,6 +125,9 @@ function inicializarEcosistema() {
   // 08 — Staging de setup institucional (se comparte con el equipo operativo)
   crearObtenerCarpeta_(root, SIDEP_CONFIG.stagingFolderName);
 
+  // 09 — Staging académico (docentes, estudiantes — operación continua)
+  crearObtenerCarpeta_(root, SIDEP_CONFIG.stagingAcademicoFolderName);
+
   Logger.log("════════════════════════════════════════════════");
   Logger.log("✅ Estructura de carpetas lista");
   Logger.log("⏭  SIGUIENTE PASO: ejecutar setupSidepTables()");

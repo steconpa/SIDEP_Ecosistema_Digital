@@ -146,6 +146,118 @@ function aplicarProteccionesStagingSetup_(ss) {
 }
 
 
+// ============================================================
+// STAGING ACADÉMICO — SIDEP_STG_DOCENTES
+// ============================================================
+
+/**
+ * Crea/configura el Spreadsheet SIDEP_STG_DOCENTES en 09_STAGING_ACADEMICO.
+ * Sigue el mismo patrón que setupStagingSheets() para SIDEP_04_STAGING_SETUP.
+ *
+ * Uso:
+ *   setupStagingDocentesSheets()               → SAFE
+ *   setupStagingDocentesSheets({ force:true }) → recrea hojas si ya tienen datos
+ */
+function setupStagingDocentesSheets(options) {
+  const opts = options || {};
+  const force = opts.force === true;
+  const ss    = getOrCreateStagingDocentesSpreadsheet_();
+  const t0    = Date.now();
+
+  Logger.log("════════════════════════════════════════════════");
+  Logger.log("🧱 SIDEP — setupStagingDocentesSheets");
+  Logger.log("   Modo    : " + (force ? "FORCE" : "SAFE"));
+  Logger.log("   Archivo : " + SIDEP_CONFIG.files.stagingDocentes);
+  Logger.log("   Carpeta : " + SIDEP_CONFIG.stagingAcademicoFolderName);
+  Logger.log("════════════════════════════════════════════════");
+
+  configurarTablasStaging_(ss, STAGING_ACADEMICO_TABLES, force);
+
+  Logger.log("\n🗂️  Registrando Tablas nativas de staging académico...");
+  registrarTablasSheetsAPI_(ss, STAGING_ACADEMICO_TABLES, force);
+
+  Logger.log("\n🔤 Aplicando dropdowns/tipos...");
+  aplicarDropdownsCatalogo(ss, STAGING_ACADEMICO_TABLES);
+
+  Logger.log("\n🔒 Aplicando protecciones de columnas...");
+  aplicarProteccionesStagingDocentes_(ss);
+
+  Logger.log("\n🧭 Instalando trigger de menú al abrir...");
+  instalarTriggerStagingDocentes_(ss);
+
+  const dur = ((Date.now() - t0) / 1000).toFixed(1);
+  Logger.log("\n════════════════════════════════════════════════");
+  Logger.log("✅ setupStagingDocentesSheets completado en " + dur + "s");
+  Logger.log("   Spreadsheet: " + ss.getName());
+  Logger.log("   Hojas       : " + Object.keys(STAGING_ACADEMICO_TABLES).length);
+  Logger.log("════════════════════════════════════════════════");
+}
+
+
+function getOrCreateStagingDocentesSpreadsheet_() {
+  const root = getRootFolderSafe();
+  let folder;
+  try {
+    folder = getSubFolder(root, SIDEP_CONFIG.stagingAcademicoFolderName);
+  } catch (e) {
+    folder = root.createFolder(SIDEP_CONFIG.stagingAcademicoFolderName);
+    Logger.log("  ➕ Carpeta creada: " + SIDEP_CONFIG.stagingAcademicoFolderName);
+  }
+
+  const ss = getOrCreateSpreadsheet(SIDEP_CONFIG.files.stagingDocentes, folder);
+
+  // Persistir ID para acceso O(1) en operación continua
+  PropertiesService.getScriptProperties()
+    .setProperty(SIDEP_CONFIG.propKeys.stagingDocentesId, ss.getId());
+
+  return ss;
+}
+
+
+function aplicarProteccionesStagingDocentes_(ss) {
+  const prefix = "SIDEP_STG_DOCENTES:";
+
+  Object.keys(STAGING_ACADEMICO_TABLES).forEach(function(tableName) {
+    const hoja = ss.getSheetByName(tableName);
+    if (!hoja) return;
+
+    const editable     = STAGING_ACADEMICO_EDITABLE_COLUMNS[tableName] || [];
+    const headers      = hoja.getRange(1, 1, 1, hoja.getLastColumn()).getValues()[0];
+    const currentUser  = Session.getEffectiveUser().getEmail();
+
+    // Limpiar protecciones previas de este prefijo
+    hoja.getProtections(SpreadsheetApp.ProtectionType.RANGE).forEach(function(p) {
+      try {
+        if (p.getDescription() && p.getDescription().indexOf(prefix) === 0) p.remove();
+      } catch (e) {}
+    });
+
+    if (tableName === "STG_DOCENTES_LOG") {
+      protegerRangoStaging_(
+        hoja.getRange(1, 1, Math.max(hoja.getMaxRows(), 2), hoja.getMaxColumns()),
+        prefix + "FULL:" + tableName,
+        currentUser
+      );
+      return;
+    }
+
+    headers.forEach(function(col, i) {
+      const isEditable = editable.indexOf(String(col)) !== -1;
+      if (isEditable) {
+        hoja.getRange(1, i + 1).setBackground("#d9ead3");
+      } else {
+        hoja.getRange(1, i + 1).setBackground("#f4cccc");
+        protegerRangoStaging_(
+          hoja.getRange(1, i + 1, Math.max(hoja.getMaxRows(), 2), 1),
+          prefix + "COL:" + tableName + ":" + col,
+          currentUser
+        );
+      }
+    });
+  });
+}
+
+
 function protegerRangoStaging_(range, description, currentUser) {
   try {
     const p = range.protect();

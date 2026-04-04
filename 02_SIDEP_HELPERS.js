@@ -200,13 +200,18 @@ function getOrCreateSpreadsheet(name, folder) {
 function getSpreadsheetByName(fileKey) {
   const fileName = SIDEP_CONFIG.files[fileKey];
   if (!fileName) {
-    throw new Error("fileKey inválido: '" + fileKey + "'. Usar: core | admin | bi | staging");
+    throw new Error(
+      "fileKey inválido: '" + fileKey + "'. " +
+      "Usar: core | admin | bi | staging | stagingDocentes"
+    );
   }
-  const root      = getRootFolderSafe();
-  const folderKey = fileKey === "staging"
+  const root       = getRootFolderSafe();
+  const folderName = fileKey === "staging"
     ? SIDEP_CONFIG.stagingFolderName
-    : SIDEP_CONFIG.dbFolderName;
-  const targetFolder = getSubFolder(root, folderKey);
+    : fileKey === "stagingDocentes"
+      ? SIDEP_CONFIG.stagingAcademicoFolderName
+      : SIDEP_CONFIG.dbFolderName;
+  const targetFolder = getSubFolder(root, folderName);
   const files     = targetFolder.getFilesByName(fileName);
   if (!files.hasNext()) {
     throw new Error(

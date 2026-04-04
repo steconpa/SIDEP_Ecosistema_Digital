@@ -43,14 +43,19 @@
  *   16b_sincronizarDocentes.gs   → sincroniza estado de invitaciones docentes
  *   17_importarEstudiantes.gs    → carga masiva de Students y Enrollments
  *   18_notificarEstudiantes.gs   → envío de notificaciones a estudiantes
- *   19_setupStagingSheets.gs     → crea SIDEP_04_STAGING_SETUP y SIDEP_STAGING_APERTURAS
+ *   19_setupStagingSheets.gs     → crea SIDEP_04_STAGING_SETUP, SIDEP_STAGING_APERTURAS
+ *                                    y SIDEP_STG_DOCENTES (09_STAGING_ACADEMICO)
  *
- *   ── Capa de datos staging (repo / service / jobs) ──────────────────────
- *   24_repo_staging.gs           → acceso a datos de staging (CERO negocio)
+ *   ── Capa de datos staging (repo / service / jobs / menu) ───────────────
+ *   24_repo_staging.gs              → acceso a datos de SIDEP_04_STAGING_SETUP (CERO negocio)
+ *   24b_repo_staging_academico.gs   → acceso a datos de SIDEP_STG_DOCENTES (CERO negocio)
  *   30_service_institution_setup.gs → valida y promueve STG_INSTITUTION_SETUP
  *   31_service_aperturas_staging.gs → valida y promueve STG_APERTURAS
- *   40_job_procesarStgAperturas.gs  → job manual/automático — procesa STG_APERTURAS
- *   41_staging_setup_menu.gs        → menú y trigger onOpen de SIDEP_04_STAGING_SETUP
+ *   32_service_docentes_staging.gs  → valida y promueve STG_DOCENTES / STG_ASIGNACIONES
+ *   40_job_procesarStgAperturas.gs  → job — procesa STG_APERTURAS
+ *   41_staging_setup_menu.gs        → menú onOpen de SIDEP_04_STAGING_SETUP
+ *   42_job_procesarStgDocentes.gs   → job — procesa STG_DOCENTES / STG_ASIGNACIONES
+ *   52_menu_staging_docentes.gs     → menú onOpen de SIDEP_STG_DOCENTES
  *
  *   ── Scripts ejecutables — operación continua ───────────────────────────
  *   18_semaforo.gs               → trigger semanal — motor de riesgo académico
@@ -135,9 +140,10 @@
 
 const SIDEP_CONFIG = {
   // Estructura de carpetas en Google Drive
-  rootFolderName: "00_SIDEP_ECOSISTEMA_DIGITAL",
-  dbFolderName:   "01_BASES_DE_DATOS_MAESTRAS",
-  stagingFolderName: "08_STAGING_SETUP",
+  rootFolderName:            "00_SIDEP_ECOSISTEMA_DIGITAL",
+  dbFolderName:              "01_BASES_DE_DATOS_MAESTRAS",
+  stagingFolderName:         "08_STAGING_SETUP",
+  stagingAcademicoFolderName:"09_STAGING_ACADEMICO",
 
   // Nombres de los Spreadsheets (no cambiar en producción sin migración de datos)
   files: {
@@ -145,7 +151,8 @@ const SIDEP_CONFIG = {
     admin:           "SIDEP_02_GESTION_ADMIN",
     bi:              "SIDEP_03_BI_DASHBOARD",
     staging:         "SIDEP_04_STAGING_SETUP",
-    stagingAperturas:"SIDEP_STAGING_APERTURAS"
+    stagingAperturas:"SIDEP_STAGING_APERTURAS",
+    stagingDocentes: "SIDEP_STG_DOCENTES"
   },
 
   // Estilo de encabezados — aplica a todas las tablas via configurarTablas_()
@@ -172,6 +179,7 @@ const SIDEP_CONFIG = {
   // Todos los scripts deben leer/escribir ScriptProperties usando estas claves.
   propKeys: {
     rootFolderId:       "sidep_rootFolderId",        // ID de la carpeta raíz en caché O(1)
-    stagingAperturasId: "sidep_stagingAperturasId"   // ID del SS SIDEP_STAGING_APERTURAS
+    stagingAperturasId: "sidep_stagingAperturasId",  // ID del SS SIDEP_STAGING_APERTURAS
+    stagingDocentesId:  "sidep_stagingDocentesId"    // ID del SS SIDEP_STG_DOCENTES
   }
 };
