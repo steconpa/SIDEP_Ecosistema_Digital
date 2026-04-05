@@ -161,10 +161,14 @@ function procesarStgEstudiantes(options) {
  *
  * @param {object} [options]
  * @param {boolean} [options.dryRun]
+ * @param {boolean} [options.skipNotify] — omite notificarEstudiantes() al final.
+ *   Usar cuando se reintenta un lote parcial para evitar emails duplicados.
+ *   Enviar la notificación manualmente después desde el menú.
  */
 function procesarStgMatriculas(options) {
-  var opts    = options || {};
-  var dryRun  = opts.dryRun === true;
+  var opts       = options || {};
+  var dryRun     = opts.dryRun     === true;
+  var skipNotify = opts.skipNotify === true;
   var ahora   = nowSIDEP();
   var usuario = Session.getEffectiveUser().getEmail() || "script@sidep";
 
@@ -256,7 +260,7 @@ function procesarStgMatriculas(options) {
     Logger.log("   " + logMsg);
 
     // Notificar estudiantes recién matriculados
-    if (res.invitacionesOk > 0) {
+    if (res.invitacionesOk > 0 && !skipNotify) {
       Logger.log("\n-- Notificando estudiantes (" + res.invitacionesOk + " matriculas nuevas) --");
       try {
         notificarEstudiantes();
@@ -265,6 +269,8 @@ function procesarStgMatriculas(options) {
         registrarStgEstudiantesLog({ stageEntityType: "MATRICULA", stageRecordId: "BATCH",
           action: "NOTIFY", result: "ERROR", message: eNotif.message });
       }
+    } else if (res.invitacionesOk > 0 && skipNotify) {
+      Logger.log("\n-- skipNotify=true: notificacion omitida. Enviar manualmente desde el menu. --");
     }
 
   } catch (e) {

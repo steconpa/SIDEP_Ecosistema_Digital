@@ -55,6 +55,7 @@ function stagingEstudiantesOnOpen(e) {
     // — MATRICULAS A AULAS —
     .addItem("Validar matriculas (sin escribir)",         "menuValidarMatriculas_")
     .addItem("Procesar matriculas a aulas",               "menuProcesarMatriculas_")
+    .addItem("Procesar matriculas (sin notificar)",       "menuProcesarMatriculasSinNotificar_")
     .addSeparator()
 
     // — NOTIFICACIONES —
@@ -194,6 +195,36 @@ function menuProcesarMatriculas_() {
   try {
     procesarStgMatriculas();
     ui.alert("Proceso completado.\nRevisa STG_ESTUDIANTES_LOG para el detalle.", ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert("Error:\n" + e.message);
+  }
+}
+
+
+function menuProcesarMatriculasSinNotificar_() {
+  var ui   = SpreadsheetApp.getUi();
+  var resp = ui.alert(
+    "SIDEP — Procesar matriculas (sin notificar)",
+    "Igual que 'Procesar matriculas a aulas' pero SIN enviar el\n" +
+    "correo de bienvenida al finalizar.\n\n" +
+    "Usa esta opcion cuando:\n" +
+    "  - Estas reprocesando un lote parcial (filas que fallaron antes)\n" +
+    "  - El primer lote ya envio el correo y no quieres duplicarlo\n\n" +
+    "Despues de procesar, envia el correo manualmente con:\n" +
+    "  'Notificar estudiantes (enviar)'\n\n" +
+    "Continuar?",
+    ui.ButtonSet.YES_NO
+  );
+  if (resp !== ui.Button.YES) return;
+  try {
+    procesarStgMatriculas({ skipNotify: true });
+    ui.alert(
+      "Proceso completado.\n\n" +
+      "Notificacion NO enviada (skipNotify=true).\n" +
+      "Envia el correo manualmente con 'Notificar estudiantes (enviar)'.\n\n" +
+      "Revisa STG_ESTUDIANTES_LOG para el detalle.",
+      ui.ButtonSet.OK
+    );
   } catch (e) {
     ui.alert("Error:\n" + e.message);
   }
