@@ -78,19 +78,89 @@ const PANEL_CONFIG = {
 
 /**
  * Menú del spreadsheet SIDEP_PANEL_ACADEMICO.
- * Instalar con un trigger onOpen en el spreadsheet del panel.
+ * Se dispara por un installable trigger onOpen instalado desde
+ * setupPanelAcademico() vía instalarTriggerPanel_().
+ *
+ * MENÚ (en orden de ejecución del flujo académico):
+ *
+ *   — BOOTSTRAP —
+ *   ├── 🧱 Recrear estructura del panel
+ *
+ *   — ENTRADA DE NOTAS —
+ *   ├── 📝 Generar plantilla de notas
+ *   ├── 💾 Cargar notas a GradeHistory
+ *
+ *   — CÁLCULO ACADÉMICO —
+ *   ├── 🚦 Refrescar semáforo
+ *
+ *   — SALIDA —
+ *   └── 📄 Generar boletín
  */
-function onOpenPanel() {
-  var ui = SpreadsheetApp.getUi();
-  ui.createMenu("Panel Académico")
-    .addItem("Generar plantilla de notas",    "generarPlantillaNotas")
-    .addItem("Cargar notas a GradeHistory",   "cargarNotasAGradeHistory")
+function onOpenPanel(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss || ss.getName() !== PANEL_CONFIG.NOMBRE) return;
+
+  SpreadsheetApp.getUi()
+    .createMenu("Panel Académico")
+
+    // — BOOTSTRAP —
+    .addItem("🧱 Recrear estructura del panel",  "setupPanelAcademico")
     .addSeparator()
-    .addItem("Refrescar semáforo",            "refrescarSemaforo")
-    .addItem("Generar boletín",               "generarBoletin")
+
+    // — ENTRADA DE NOTAS —
+    .addItem("📝 Generar plantilla de notas",    "generarPlantillaNotas")
+    .addItem("💾 Cargar notas a GradeHistory",   "cargarNotasAGradeHistory")
     .addSeparator()
-    .addItem("Recrear estructura del panel",  "setupPanelAcademico")
+
+    // — CÁLCULO ACADÉMICO —
+    .addItem("🚦 Refrescar semáforo",            "refrescarSemaforo")
+    .addSeparator()
+
+    // — SALIDA —
+    .addItem("📄 Generar boletín",               "generarBoletin")
+
     .addToUi();
+}
+
+
+// ── Instalación del trigger onOpen ────────────────────────────
+
+/**
+ * Instala (idempotente) el trigger onOpen sobre el spreadsheet del panel.
+ * Se llama automáticamente desde setupPanelAcademico() al crear el panel.
+ * Si ya existe un trigger onOpenPanel apuntando al mismo SS, no hace nada.
+ */
+function instalarTriggerPanel_(ss) {
+  var targetId = ss.getId();
+  var existe = ScriptApp.getProjectTriggers().some(function(t) {
+    return t.getHandlerFunction() === "onOpenPanel" &&
+           t.getTriggerSourceId && t.getTriggerSourceId() === targetId;
+  });
+  if (!existe) {
+    ScriptApp.newTrigger("onOpenPanel")
+      .forSpreadsheet(ss)
+      .onOpen()
+      .create();
+    Logger.log("  ✔  Trigger onOpenPanel instalado");
+  } else {
+    Logger.log("  ⏭  Trigger onOpenPanel ya existe");
+  }
+}
+
+/**
+ * Elimina todos los triggers onOpenPanel del proyecto (para reinstalar limpio).
+ * Úsalo antes de instalarTriggerPanel_ si sospechas duplicados.
+ */
+function limpiarTriggerPanel_() {
+  var triggers  = ScriptApp.getProjectTriggers();
+  var eliminados = 0;
+  triggers.forEach(function(t) {
+    if (t.getHandlerFunction() === "onOpenPanel") {
+      ScriptApp.deleteTrigger(t);
+      eliminados++;
+    }
+  });
+  Logger.log("  ✔  Triggers onOpenPanel eliminados: " + eliminados);
 }
 
 
@@ -149,9 +219,14 @@ function setupPanelAcademico() {
       }
     });
 
+    // Instalar trigger onOpen para que el menú "Panel Académico"
+    // aparezca automáticamente al abrir el spreadsheet.
+    instalarTriggerPanel_(ss);
+
     Logger.log("════════════════════════════════════════════════");
     Logger.log("   Panel creado exitosamente.");
     Logger.log("   URL: " + ss.getUrl());
+    Logger.log("   Menú: abrir el spreadsheet → aparecerá 'Panel Académico'.");
     Logger.log("════════════════════════════════════════════════");
 
   } catch (e) {
