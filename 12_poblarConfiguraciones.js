@@ -166,6 +166,71 @@
 // ─────────────────────────────────────────────────────────────
 
 /**
+ * Siembra (o re-siembra) ÚNICAMENTE la tabla _CFG_SEMAFORO.
+ * No toca ninguna otra tabla _CFG_* ni datos de producción.
+ *
+ * Úsala cuando poblarConfiguraciones() saltó en modo SAFE porque
+ * las otras tablas _CFG_* ya tienen datos, pero _CFG_SEMAFORO está
+ * vacía (escenario normal al actualizar el modelo de v4.3.0 a v4.4.0).
+ *
+ * @param {Object}  [options]
+ * @param {boolean} [options.force=false] — true: limpia y reescribe aunque ya tenga datos
+ */
+function inicializarSemaforoConfig(options) {
+  var opts     = options || {};
+  var force    = opts.force === true;
+  var ahora    = nowSIDEP();
+  var ejecutor = Session.getEffectiveUser().getEmail();
+
+  Logger.log("════════════════════════════════════════════════");
+  Logger.log("⚙️  SIDEP — inicializarSemaforoConfig");
+  Logger.log("   Ejecutor : " + ejecutor);
+  Logger.log("   Modo     : " + (force ? "FORCE (reescribe)" : "SAFE (salta si existe)"));
+  Logger.log("════════════════════════════════════════════════");
+
+  try {
+    var coreSS = getSpreadsheetByName("core");
+    var hoja   = coreSS.getSheetByName("_CFG_SEMAFORO");
+
+    if (!hoja) {
+      Logger.log("❌ Hoja _CFG_SEMAFORO no encontrada.");
+      Logger.log("   Ejecuta setupSidepTables() primero (modelo v4.4.0).");
+      return;
+    }
+
+    var tieneData = hoja.getLastRow() > 1;
+
+    if (tieneData && !force) {
+      Logger.log("⏭  _CFG_SEMAFORO ya tiene " + (hoja.getLastRow() - 1) + " registros — sin cambios.");
+      Logger.log("   Umbrales actuales (editar directamente en Sheets si necesitas cambiarlos):");
+      var rows = hoja.getRange(2, 1, hoja.getLastRow() - 1, 4).getValues();
+      rows.forEach(function(r) {
+        Logger.log("     " + r[1] + " = " + r[2] + "  (" + r[3] + ")");
+      });
+      Logger.log("   Usa inicializarSemaforoConfig({force:true}) solo si quieres resetear a los defaults.");
+      return;
+    }
+
+    if (tieneData && force) {
+      hoja.getRange(2, 1, hoja.getLastRow() - 1, hoja.getLastColumn()).clearContent();
+      Logger.log("  🗑  _CFG_SEMAFORO limpiada.");
+    }
+
+    poblarSemaforoConfig_(coreSS, ahora, ejecutor);
+
+    Logger.log("════════════════════════════════════════════════");
+    Logger.log("✅ _CFG_SEMAFORO lista — 7 umbrales sembrados.");
+    Logger.log("   SIGUIENTE PASO: ejecutar diagnosticarSemaforo()");
+    Logger.log("════════════════════════════════════════════════");
+
+  } catch (e) {
+    Logger.log("❌ ERROR: " + e.message);
+    throw e;
+  }
+}
+
+
+/**
  * Pobla todas las tablas _CFG_* del SIDEP_01_CORE_ACADEMICO.
  * @param {Object}  options
  * @param {boolean} options.force — true: limpia y reescribe. Default: false
