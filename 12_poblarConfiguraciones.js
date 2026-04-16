@@ -198,13 +198,21 @@ function inicializarSemaforoConfig(options) {
       return;
     }
 
-    var tieneData = hoja.getLastRow() > 1;
+    // getLastRow() devuelve el total de filas físicas de la hoja aunque estén vacías
+    // (Google Sheets crea hojas con 1000 filas por defecto). Se necesita verificar
+    // que haya contenido real en ConfigKey (col 2), no solo que existan filas.
+    var primeraConfigKey = hoja.getLastRow() > 1
+      ? String(hoja.getRange(2, 2).getValue()).trim()
+      : "";
+    var tieneData = primeraConfigKey !== "";
 
     if (tieneData && !force) {
-      Logger.log("⏭  _CFG_SEMAFORO ya tiene " + (hoja.getLastRow() - 1) + " registros — sin cambios.");
+      // Leer solo las filas con ConfigKey no vacío para el reporte
+      var todasLasFilas = hoja.getRange(2, 1, hoja.getLastRow() - 1, 4).getValues();
+      var filasReales   = todasLasFilas.filter(function(r) { return String(r[1]).trim() !== ""; });
+      Logger.log("⏭  _CFG_SEMAFORO ya tiene " + filasReales.length + " umbrales — sin cambios.");
       Logger.log("   Umbrales actuales (editar directamente en Sheets si necesitas cambiarlos):");
-      var rows = hoja.getRange(2, 1, hoja.getLastRow() - 1, 4).getValues();
-      rows.forEach(function(r) {
+      filasReales.forEach(function(r) {
         Logger.log("     " + r[1] + " = " + r[2] + "  (" + r[3] + ")");
       });
       Logger.log("   Usa inicializarSemaforoConfig({force:true}) solo si quieres resetear a los defaults.");
