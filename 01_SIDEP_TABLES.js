@@ -31,9 +31,29 @@
  *   Las constantes de este archivo espejean las tablas _CFG_* en Sheets.
  *   Cualquier cambio aquí requiere actualizar el Sheet correspondiente también.
  *
- * VERSIÓN: 1.1.0
+ * VERSIÓN: 1.3.0
  * AUTOR: Stevens Contreras
- * FECHA: 2026-03-27
+ * FECHA: 2026-04-15
+ *
+ * CAMBIOS v1.3.0 vs v1.2.0 — Configuración dinámica de umbrales (modelo v4.4.0):
+ *   - NUEVA tabla CORE: _CFG_SEMAFORO — umbrales y escala de calificación.
+ *     Permite cambiar UMBRAL_GREEN, UMBRAL_YELLOW, ESCALA_MIN/MAX y niveles
+ *     desde el Sheet sin tocar código. 20_semaforo.js la lee al arrancar.
+ *     Si la tabla está vacía: fallback a CFG_SEMAFORO (constante en el script).
+ *   - COLUMN_TYPES: entrada vacía _CFG_SEMAFORO (todos sus tipos son auto-detectados).
+ *
+ * CAMBIOS v1.2.0 vs v1.1.0 — Semáforo académico (modelo v4.3.0):
+ *   - NUEVA columna _CFG_SUBJECTS.HasSyllabus (DROPDOWN_INLINE TRUE/FALSE).
+ *     Identifica materias sin temario formal (DPW, PAI, SEM, MDA).
+ *     Declarada en COLUMN_TYPES porque no sigue convención Is* (no auto-detectada).
+ *   - NUEVA tabla ADMIN: GradeHistory — historial manual pre-Classroom.
+ *     Una fila por estudiante × asignatura × momento. Fuente siempre = MANUAL.
+ *     Política de calificación: escala 1.0–5.0 (DEC-2026-015).
+ *   - NUEVA tabla BI: GradeAudit — tabla primaria del Semáforo (Opción B).
+ *     ViewActiveStudents no cambia (resumen ejecutivo). GradeAudit contiene el
+ *     detalle por asignatura: Nota, Nivel, SemaforoColor, PromedioAcumulado.
+ *     Escrita/reemplazada por 20_semaforo.js en cada ejecución semanal.
+ *   - COLUMN_TYPES: entradas nuevas para GradeHistory (ADMIN) y GradeAudit (BI).
  *
  * CAMBIOS v1.1.0 vs v1.0.0 — COLUMN_TYPES:
  *   - NUEVO const COLUMN_TYPES: mapa de tipos de columna por tabla.
@@ -206,6 +226,9 @@ const CORE_TABLES = {
     "IsTransversal",     // BOOLEAN — true = UNA sola aula compartida por todos los programas
     "IsActive",
     "Notes",
+    "HasSyllabus",       // v4.3.0 — TRUE si tiene temario en _CFG_SYLLABUS, FALSE si es libre
+                         // NOTA: no sigue convención Is* por claridad semántica — ver COLUMN_TYPES
+                         // Materias sin syllabus conocidas: DPW, PAI, SEM, MDA
     "CreatedAt",
     "CreatedBy",
     "UpdatedAt",
@@ -319,8 +342,43 @@ const CORE_TABLES = {
     "UpdatedBy"
   ],
 
+  // Configuración dinámica del semáforo — v4.4.0.
+  //
+  // PROPÓSITO: permite ajustar umbrales y escala sin tocar código.
+  // 20_semaforo.js lee esta tabla al arrancar y sobreescribe CFG_SEMAFORO
+  // (constante en el script). Si la tabla está vacía, el script usa los
+  // defaults hardcodeados como fallback — el sistema nunca queda roto.
+  //
+  // CLAVES DEFINIDAS (ConfigKey):
+  //   ESCALA_MIN          → nota mínima válida         (default 1.0)
+  //   ESCALA_MAX          → nota máxima válida         (default 5.0)
+  //   UMBRAL_GREEN        → mínimo para semáforo VERDE (default 4.1)
+  //   UMBRAL_YELLOW       → mínimo para AMARILLO       (default 3.0)
+  //   UMBRAL_APROBACION   → nota mínima aprobatoria    (default 3.0)
+  //   NIVEL_EXCELENTE_MIN → mínimo para nivel EXCELENTE (default 4.5)
+  //   NIVEL_BUENO_MIN     → mínimo para nivel BUENO    (default 4.0)
+  //
+  // CÓMO CAMBIAR UN UMBRAL:
+  //   1. Abrir SIDEP_01_CORE_ACADEMICO → hoja _CFG_SEMAFORO
+  //   2. Editar ConfigValue de la clave correspondiente
+  //   3. El próximo lunes el semáforo usará el valor nuevo automáticamente
+  //
+  // NO hay que tocar ningún script al cambiar umbrales.
+  "_CFG_SEMAFORO": [
+    "ConfigSemaforoID",  // TEXT — PK — "csf_<uuid>"
+    "ConfigKey",         // TEXT — clave del parámetro (ver lista arriba)
+    "ConfigValue",       // NUMBER — valor numérico del parámetro
+    "ConfigLabel",       // TEXT — nombre legible para Carlos en AppSheet
+    "Description",       // TEXT — qué controla este parámetro
+    "IsActive",          // BOOLEAN — false = ignorado por el semáforo
+    "CreatedAt",
+    "CreatedBy",
+    "UpdatedAt",
+    "UpdatedBy"
+  ],
+
   // Calendario académico — cohorte × momento → fechas reales.
-  // FUENTE DE VERDAD del calendario, usada por el Semáforo (18_semaforo.gs).
+  // FUENTE DE VERDAD del calendario, usada por el Semáforo (20_semaforo.js).
   //
   // CohortCode aquí = cohorte de ENTRADA del estudiante.
   // (≠ CohortCode en MasterDeployments, que es la ventana del aula)
@@ -616,6 +674,38 @@ const ADMIN_TABLES = {
     "Status",               // COMPLETO | PENDIENTE
     "CreatedAt",
     "CreatedBy"
+  ],
+
+  // Historial de calificaciones pre-Classroom — v4.3.0 (Semáforo).
+  //
+  // PROPÓSITO: almacena las notas de estudiantes de cohortes históricos (EN26, FB25, AG25)
+  // que cursaron períodos antes de que existiera Google Classroom.
+  // Fuente: planilla Excel manual → importación única por periodo.
+  //
+  // POLÍTICA DE CALIFICACIÓN (DEC-2026-015 — escala institucional):
+  //   Nota válida: 1.0–5.0
+  //   Estado: APROBADO si Nota ≥ 3.0 | REPROBADO si Nota < 3.0
+  //   Nivel:  INSUFICIENTE (1.0–2.9) | ACEPTABLE (3.0–3.9) | BUENO (4.0–4.4) | EXCELENTE (4.5–5.0)
+  //
+  // RELACIÓN CON EL SEMÁFORO (20_semaforo.js):
+  //   El motor lee GradeHistory para calcular PromedioAcumulado en GradeAudit.
+  //   Fuente siempre = MANUAL para filas de esta tabla.
+  //   Una sola fila por estudiante × asignatura × momento (idempotencia: StudentID+SubjectCode+MomentCode).
+  "GradeHistory": [
+    "GradeHistoryID",    // TEXT — PK — "ghi_<uuid>"
+    "StudentID",         // ref Students (ADMIN)
+    "SubjectCode",       // ref _CFG_SUBJECTS (CORE)
+    "SubjectName",       // TEXT — desnormalizado, optimiza consultas BI sin JOIN
+    "ProgramCode",       // ref _CFG_PROGRAMS (CORE)
+    "EntryCohortCode",   // ref _CFG_COHORTS — cohorte de ENTRADA del estudiante — INMUTABLE
+    "WindowCohortCode",  // ref _CFG_COHORTS — ventana del aula donde cursó la materia
+    "MomentCode",        // ref _CFG_MOMENTS — período académico (C1M1, A1B1...)
+    "Nota",              // NUMBER — 1.0–5.0 — nota final de la asignatura
+    "Nivel",             // INSUFICIENTE | ACEPTABLE | BUENO | EXCELENTE
+    "Estado",            // APROBADO (Nota ≥ 3.0) | REPROBADO (Nota < 3.0)
+    "Fuente",            // MANUAL siempre — distingue del flujo Classroom
+    "CreatedAt",
+    "CreatedBy"
   ]
 };
 
@@ -653,6 +743,47 @@ const BI_TABLES = {
     "AdminTasksPending",
     "AutomationsRun",
     "GeneratedAt"
+  ],
+
+  // Auditoría de calificaciones — tabla primaria del Semáforo — v4.3.0.
+  //
+  // PROPÓSITO: una fila por estudiante × asignatura × momento activo.
+  // 20_semaforo.js escribe/reemplaza esta tabla en cada ejecución.
+  // Permite a Carlos ver en AppSheet:
+  //   - Columna "Promedio Acumulado": promedio de todos los períodos cursados
+  //   - Columna "Período Actual": promedio de actividades con nota publicada este período
+  //   - Detalle por asignatura: Nota, Nivel, SemaforoColor, ActConNota, ActSinNota
+  //
+  // DECISIONES DE DISEÑO CONFIRMADAS (D1/D2/D3):
+  //   D1 — Historial: nota final numérica de GradeHistory (MANUAL)
+  //   D2 — Classroom: solo assignedGrade publicada. Sin nota → PENDIENTE (no promedia)
+  //   D3 — Vista separada: Promedio_Acumulado y Nota (período actual) en columnas distintas
+  //
+  // POLÍTICA DE CALIFICACIÓN (DEC-2026-015):
+  //   Escala 1.0–5.0. Umbral semáforo: GREEN ≥ 4.1 | YELLOW ≥ 3.0 | RED < 3.0
+  //   GREY = sin datos suficientes (todo PENDIENTE o materia SIN_SYLLABUS)
+  //
+  // IDEMPOTENCIA: StudentID + SubjectCode + MomentCode + WindowCohortCode.
+  // El semáforo borra y reescribe las filas del período activo en cada ejecución.
+  "GradeAudit": [
+    "GradeAuditID",       // TEXT — PK — "gau_<uuid>"
+    "StudentID",          // ref Students (ADMIN)
+    "FullName",           // TEXT — desnormalizado (FirstName + LastName)
+    "ProgramCode",        // ref _CFG_PROGRAMS (CORE)
+    "EntryCohortCode",    // ref _CFG_COHORTS — cohorte de ENTRADA — INMUTABLE
+    "SubjectCode",        // ref _CFG_SUBJECTS (CORE)
+    "SubjectName",        // TEXT — desnormalizado
+    "MomentCode",         // ref _CFG_MOMENTS — momento activo en la ventana
+    "WindowCohortCode",   // ref _CFG_COHORTS — ventana del aula (≠ EntryCohortCode posible)
+    "Nota",               // NUMBER — promedio período actual (1.0–5.0) | NULL si sin datos
+    "Nivel",              // INSUFICIENTE | ACEPTABLE | BUENO | EXCELENTE | PENDIENTE | SIN_SYLLABUS
+    "SemaforoColor",      // GREEN | YELLOW | RED | GREY
+    "Fuente",             // MANUAL (de GradeHistory) | CLASSROOM (de Classroom API)
+    "ActConNota",         // NUMBER — actividades con assignedGrade publicada este período
+    "ActSinNota",         // NUMBER — actividades sin nota publicada (pendientes docente)
+    "PromedioAcumulado",  // NUMBER — promedio de TODOS los períodos cursados (hist + actual)
+    "NivelAcumulado",     // INSUFICIENTE | ACEPTABLE | BUENO | EXCELENTE | PENDIENTE
+    "GeneratedAt"         // DATETIME — timestamp de la última ejecución del semáforo
   ]
 };
 
@@ -736,6 +867,10 @@ const COLUMN_TYPES = {
 
   // ── CORE ──────────────────────────────────────────────────────────────────
 
+  // _CFG_SEMAFORO: sin DROPDOWN_CAT — solo Is* (auto CHECKBOX) y NUMBER (auto TEXT).
+  // ConfigKey y ConfigLabel son TEXT libres — el semáforo los lee por nombre exacto.
+  "_CFG_SEMAFORO": {},
+
   "_CFG_COHORTS": {
     "ModalityCode":  { type: "DROPDOWN_INLINE", values: ["DIR", "ART"] }
   },
@@ -755,13 +890,17 @@ const COLUMN_TYPES = {
   },
 
   "_CFG_SUBJECTS": {
-    "ProgramCode":    { type: "DROPDOWN_CAT", source: "_CFG_PROGRAMS" },
+    "ProgramCode":    { type: "DROPDOWN_CAT",    source: "_CFG_PROGRAMS" },
     "CicloDir":       { type: "DROPDOWN_INLINE", values: ["C1", "C2", "C3"] },
     "CicloArt":       { type: "DROPDOWN_INLINE", values: ["A1", "A2"] },
-    "DirStartMoment": { type: "DROPDOWN_CAT", source: "_CFG_MOMENTS" },
-    "DirEndMoment":   { type: "DROPDOWN_CAT", source: "_CFG_MOMENTS" },
-    "ArtStartBlock":  { type: "DROPDOWN_CAT", source: "_CFG_MOMENTS" },
-    "ArtEndBlock":    { type: "DROPDOWN_CAT", source: "_CFG_MOMENTS" }
+    "DirStartMoment": { type: "DROPDOWN_CAT",    source: "_CFG_MOMENTS" },
+    "DirEndMoment":   { type: "DROPDOWN_CAT",    source: "_CFG_MOMENTS" },
+    "ArtStartBlock":  { type: "DROPDOWN_CAT",    source: "_CFG_MOMENTS" },
+    "ArtEndBlock":    { type: "DROPDOWN_CAT",    source: "_CFG_MOMENTS" },
+    // HasSyllabus no sigue convención Is* → no se auto-detecta como CHECKBOX.
+    // Se declara como DROPDOWN_INLINE para dar experiencia de selección en el Sheet.
+    // El semáforo lee "TRUE"/"FALSE" como string al consultar esta columna.
+    "HasSyllabus":    { type: "DROPDOWN_INLINE", values: ["TRUE", "FALSE"] }
   },
 
   "_SYS_VERSION": {
@@ -895,6 +1034,17 @@ const COLUMN_TYPES = {
     "Status":      { type: "DROPDOWN_INLINE", values: ["COMPLETO", "PENDIENTE"] }
   },
 
+  "GradeHistory": {
+    "SubjectCode":      { type: "DROPDOWN_CAT",    source: "_CFG_SUBJECTS" },
+    "ProgramCode":      { type: "DROPDOWN_CAT",    source: "_CFG_PROGRAMS" },
+    "EntryCohortCode":  { type: "DROPDOWN_CAT",    source: "_CFG_COHORTS" },
+    "WindowCohortCode": { type: "DROPDOWN_CAT",    source: "_CFG_COHORTS" },
+    "MomentCode":       { type: "DROPDOWN_CAT",    source: "_CFG_MOMENTS" },
+    "Nivel":            { type: "DROPDOWN_INLINE", values: ["INSUFICIENTE", "ACEPTABLE", "BUENO", "EXCELENTE"] },
+    "Estado":           { type: "DROPDOWN_INLINE", values: ["APROBADO", "REPROBADO"] },
+    "Fuente":           { type: "DROPDOWN_INLINE", values: ["MANUAL", "CLASSROOM"] }
+  },
+
   // ── BI ────────────────────────────────────────────────────────────────────
 
   "ViewActiveStudents": {
@@ -907,5 +1057,17 @@ const COLUMN_TYPES = {
 
   "ViewOperationalMetrics": {
     "CampusCode": { type: "DROPDOWN_CAT", source: "_CFG_CAMPUSES" }
+  },
+
+  "GradeAudit": {
+    "SubjectCode":      { type: "DROPDOWN_CAT",    source: "_CFG_SUBJECTS" },
+    "ProgramCode":      { type: "DROPDOWN_CAT",    source: "_CFG_PROGRAMS" },
+    "EntryCohortCode":  { type: "DROPDOWN_CAT",    source: "_CFG_COHORTS" },
+    "WindowCohortCode": { type: "DROPDOWN_CAT",    source: "_CFG_COHORTS" },
+    "MomentCode":       { type: "DROPDOWN_CAT",    source: "_CFG_MOMENTS" },
+    "Nivel":            { type: "DROPDOWN_INLINE", values: ["INSUFICIENTE", "ACEPTABLE", "BUENO", "EXCELENTE", "PENDIENTE", "SIN_SYLLABUS"] },
+    "NivelAcumulado":   { type: "DROPDOWN_INLINE", values: ["INSUFICIENTE", "ACEPTABLE", "BUENO", "EXCELENTE", "PENDIENTE"] },
+    "SemaforoColor":    { type: "DROPDOWN_INLINE", values: ["GREEN", "YELLOW", "RED", "GREY"] },
+    "Fuente":           { type: "DROPDOWN_INLINE", values: ["MANUAL", "CLASSROOM"] }
   }
 };

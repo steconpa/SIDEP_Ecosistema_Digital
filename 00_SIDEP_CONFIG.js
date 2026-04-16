@@ -58,7 +58,7 @@
  *   52_menu_staging_docentes.gs     → menú onOpen de SIDEP_STG_DOCENTES
  *
  *   ── Scripts ejecutables — operación continua ───────────────────────────
- *   18_semaforo.gs               → trigger semanal — motor de riesgo académico
+ *   20_semaforo.js               → trigger semanal — motor de riesgo académico
  *   99_orquestador.gs            → punto de entrada único para onboarding y diagnóstico
  *
  *   ORDEN DE ONBOARDING (via 99_orquestador.gs):
@@ -98,9 +98,27 @@
  *   que versiona la LÓGICA del script. Ambos números son independientes.
  *   Al cambiar el esquema de una tabla: actualizar modelVersion + tablas en Sheets.
  *
- * VERSIÓN DEL MODELO: 4.2.0
+ * VERSIÓN DEL MODELO: 4.4.0
  * AUTOR: Stevens Contreras
- * FECHA: 2026-03-27
+ * FECHA: 2026-04-15
+ *
+ * CAMBIOS v4.4.0 vs v4.3.0 — Umbrales configurables desde Sheets:
+ *   - NUEVA tabla CORE: _CFG_SEMAFORO — catálogo de umbrales del semáforo académico.
+ *     Permite cambiar ESCALA_MIN/MAX, UMBRAL_GREEN/YELLOW/APROBACION y los umbrales
+ *     de nivel (EXCELENTE, BUENO) sin tocar código. Ver poblarSemaforoConfig_().
+ *   - 20_semaforo.js: _resolverCfg_() carga _CFG_SEMAFORO en arranque; todas las
+ *     funciones de cálculo leen cfg dinámica con fallback a defaults hardcodeados.
+ *   - diagnosticarSemaforo(): verifica _CFG_SEMAFORO e imprime umbrales activos.
+ *   - 12_poblarConfiguraciones.js: poblarSemaforoConfig_() siembra 7 registros base.
+ *
+ * CAMBIOS v4.3.0 vs v4.2.0 — Semáforo académico:
+ *   - NUEVA tabla ADMIN: GradeHistory — historial de notas pre-Classroom (manual).
+ *   - NUEVA tabla BI:    GradeAudit   — tabla primaria del Semáforo (Opción B).
+ *   - NUEVA columna _CFG_SUBJECTS.HasSyllabus — identifica materias sin temario formal.
+ *   - TeacherAssignments: +DayOfWeek, +StartTime, +EndTime (anotadas v4.3.0 en tablas,
+ *     formalizadas aquí como parte del mismo release).
+ *   - Comentario corregido: 18_semaforo.gs → 20_semaforo.js (numeración real).
+ *   - 01_SIDEP_TABLES.js → v1.2.0 (changelog en ese archivo).
  *
  * CAMBIOS v4.2.0 vs v4.1.0 — REFACTORING SRP:
  *   - 00_SIDEP_CONFIG.gs: ahora contiene SOLO SIDEP_CONFIG.
@@ -174,7 +192,7 @@ const SIDEP_CONFIG = {
   // Versión actual del modelo de datos.
   // Incrementar cuando cambie el schema de cualquier tabla.
   // Independiente de las versiones de cada script individual.
-  modelVersion: "4.2.0",
+  modelVersion: "4.4.0",
 
   // Claves centralizadas de ScriptProperties — evita strings mágicos dispersos.
   // Todos los scripts deben leer/escribir ScriptProperties usando estas claves.
