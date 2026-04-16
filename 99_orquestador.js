@@ -27,8 +27,8 @@
  *   16b_sincronizarDocentes.gs   → sincronizarInvitaciones(), diagnosticoInvitaciones(),
  *                                   configurarTriggerDiario(), eliminarTriggerDiario()
  *   17_importarEstudiantes.gs    → importarEstudiantes(), diagnosticoEstudiantes()
- *   18_notificarEstudiantes.gs   → notificarEstudiantes(), notificarEstudiantes_dryRun(),
- *                                   notificarEstudiante_individual(), diagnosticoNotificaciones()
+ *   18b_notificarEstudiantes.js  → notificarEstudiantes(), notificarEstudiantes_dryRun(),
+ *                                   notificarEstudiante_individual()
  *   00_SIDEP_CONFIG.gs v4.2.0+   → SIDEP_CONFIG, nowSIDEP()
  *
  * FUNCIONES DISPONIBLES (ejecutar directamente desde el editor GAS):

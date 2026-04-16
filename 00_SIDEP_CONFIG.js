@@ -42,7 +42,7 @@
  *   16_importarDocentes.gs       → asigna docentes a deployments vía Classroom API
  *   16b_sincronizarDocentes.gs   → sincroniza estado de invitaciones docentes
  *   17_importarEstudiantes.gs    → carga masiva de Students y Enrollments
- *   18_notificarEstudiantes.gs   → envío de notificaciones a estudiantes
+ *   18b_notificarEstudiantes.js  → envío de notificaciones a estudiantes (reemplaza 18)
  *   19_setupStagingSheets.gs     → crea SIDEP_04_STAGING_SETUP, SIDEP_STAGING_APERTURAS
  *                                    y SIDEP_STG_DOCENTES (09_STAGING_ACADEMICO)
  *
