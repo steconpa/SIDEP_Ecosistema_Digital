@@ -207,6 +207,7 @@ function poblarConfiguraciones(options) {
     poblarSubjects_(coreSS, ahora, ejecutor);
     poblarCohortCalendar_(coreSS, ahora, ejecutor);
     poblarRecesses_(coreSS, ahora, ejecutor);
+    poblarSemaforoConfig_(coreSS, ahora, ejecutor);
 
     var duracion = ((Date.now() - inicio) / 1000).toFixed(1);
     Logger.log("════════════════════════════════════════════════");
@@ -675,4 +676,44 @@ function poblarRecesses_(ss, ahora, ejecutor) {
   ];
   escribirDatos(ss, "_CFG_RECESSES", rows);
   Logger.log("    🗓  _CFG_RECESSES → " + rows.length + " recesos (5 confirmados + 1 aprox)");
+}
+
+function poblarSemaforoConfig_(ss, ahora, ejecutor) {
+  // Parámetros de la política de evaluación institucional (DEC-2026-015).
+  //
+  // CÓMO CAMBIAR UN UMBRAL SIN TOCAR CÓDIGO:
+  //   1. Abrir SIDEP_01_CORE_ACADEMICO → hoja _CFG_SEMAFORO
+  //   2. Editar ConfigValue de la clave correspondiente
+  //   3. El próximo lunes 20_semaforo.js usará el nuevo valor automáticamente
+  //
+  // ESCALA:
+  //   Nota válida: ESCALA_MIN (1.0) a ESCALA_MAX (5.0)
+  //   Nota fuera de rango → marcada NOTA_INVALIDA, no entra al promedio
+  //
+  // NIVELES:
+  //   EXCELENTE:   nota >= NIVEL_EXCELENTE_MIN (4.5)
+  //   BUENO:       nota >= NIVEL_BUENO_MIN     (4.0) y < NIVEL_EXCELENTE_MIN
+  //   ACEPTABLE:   nota >= UMBRAL_APROBACION   (3.0) y < NIVEL_BUENO_MIN
+  //   INSUFICIENTE:nota <  UMBRAL_APROBACION   (3.0)
+  //
+  // SEMÁFORO:
+  //   GREEN:  nota >= UMBRAL_GREEN  (4.1)   ← BUENO o EXCELENTE
+  //   YELLOW: nota >= UMBRAL_YELLOW (3.0)   ← ACEPTABLE
+  //   RED:    nota <  UMBRAL_YELLOW (3.0)   ← INSUFICIENTE
+  //   GREY:   sin datos (todo PENDIENTE o materia SIN_SYLLABUS)
+  //
+  // NOTA: UMBRAL_GREEN (4.1) y NIVEL_BUENO_MIN (4.0) son distintos.
+  //   BUENO empieza en 4.0 pero el semáforo se vuelve VERDE solo en 4.1
+  //   — margen de 0.1 punto para evitar verde por nota "justa de bueno".
+  var rows = [
+    ["csf_01","ESCALA_MIN",         1.0,"Nota mínima válida",              "Valor mínimo aceptable en la escala institucional. Notas por debajo son NOTA_INVALIDA.",          true, ahora,ejecutor,"",""],
+    ["csf_02","ESCALA_MAX",         5.0,"Nota máxima válida",              "Valor máximo aceptable en la escala institucional. Notas por encima son NOTA_INVALIDA.",          true, ahora,ejecutor,"",""],
+    ["csf_03","UMBRAL_GREEN",       4.1,"Umbral mínimo semáforo VERDE",    "Nota mínima para que el semáforo muestre VERDE. Por debajo es AMARILLO.",                        true, ahora,ejecutor,"",""],
+    ["csf_04","UMBRAL_YELLOW",      3.0,"Umbral mínimo semáforo AMARILLO", "Nota mínima para AMARILLO. Por debajo es ROJO (INSUFICIENTE).",                                  true, ahora,ejecutor,"",""],
+    ["csf_05","UMBRAL_APROBACION",  3.0,"Nota mínima aprobatoria",         "Nota mínima para aprobar una asignatura. Coincide con UMBRAL_YELLOW en la política actual.",     true, ahora,ejecutor,"",""],
+    ["csf_06","NIVEL_EXCELENTE_MIN",4.5,"Nota mínima para EXCELENTE",      "Nota >= este valor → nivel EXCELENTE en el reporte de Carlos.",                                  true, ahora,ejecutor,"",""],
+    ["csf_07","NIVEL_BUENO_MIN",    4.0,"Nota mínima para BUENO",          "Nota >= este valor y < NIVEL_EXCELENTE_MIN → nivel BUENO. El semáforo es VERDE desde 4.1.",      true, ahora,ejecutor,"",""]
+  ];
+  escribirDatos(ss, "_CFG_SEMAFORO", rows);
+  Logger.log("    ⚙️  _CFG_SEMAFORO → " + rows.length + " parámetros (escala + umbrales)");
 }
