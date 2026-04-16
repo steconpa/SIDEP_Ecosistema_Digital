@@ -2,7 +2,7 @@
  * ============================================================
  * SIDEP ECOSISTEMA DIGITAL
  * Archivo: 12_poblarConfiguraciones.gs
- * Versión: 2.0
+ * Versión: 2.1
  * ============================================================
  *
  * RESPONSABILIDAD ÚNICA:
@@ -77,6 +77,10 @@
  *   SP vs SE: este script usa "SP" para Septiembre (estándar del sistema).
  *   Los JSONs del proyecto usan "SE". Unificar en Fase 2 para evitar
  *   discrepancias al cruzar datos entre el script y los JSONs.
+ *
+ * CAMBIOS v2.1 vs v2.0:
+ *   - poblarCohorts_: +6 cohortes históricos 2025 (EN25/MR25/MY25/AG25/SP25 DIR + AB25 ART)
+ *   - registrarCohortesHistoricos(): función quirúrgica para agregar 2025 sin force
  *
  * CAMBIOS v2.0 vs v1.9 — PARCHE _CFG_SUBJECTS (columnas CicloDir + CicloArt):
  *   - poblarSubjects_: PARCHE v4.0 aplicado — escribe 19 columnas (antes 17).
@@ -239,6 +243,93 @@ function inicializarSemaforoConfig(options) {
 
 
 /**
+ * Agrega quirúrgicamente los cohortes históricos de 2025 a _CFG_COHORTS
+ * sin borrar ni reescribir los datos existentes.
+ *
+ * Cohortes que agrega (si no existen aún):
+ *   EN25, MR25, MY25, AG25, SP25 (DIR) + AB25 (ART)
+ *   FB25 se omite — ya existía desde antes de v2.1
+ *
+ * Cuándo usar esta función:
+ *   → Cuando poblarConfiguraciones() ya corrió en modo SAFE (tiene datos)
+ *     pero falta agregar los cohortes 2025 históricos.
+ *   → Es idempotente: si ya existen todos, no hace nada.
+ */
+function registrarCohortesHistoricos() {
+  var ahora    = nowSIDEP();
+  var ejecutor = Session.getEffectiveUser().getEmail();
+
+  Logger.log("════════════════════════════════════════════════");
+  Logger.log("SIDEP — registrarCohortesHistoricos v2.1");
+  Logger.log("   Ejecutor: " + ejecutor);
+  Logger.log("════════════════════════════════════════════════");
+
+  try {
+    var coreSS = getSpreadsheetByName("core");
+    var hoja   = coreSS.getSheetByName("_CFG_COHORTS");
+
+    if (!hoja) {
+      Logger.log("ERROR: Hoja _CFG_COHORTS no encontrada. Ejecutar setupSidepTables() primero.");
+      return;
+    }
+
+    // Leer cohortes existentes y construir set de CohortCodes
+    var cohortsMem = _leerHoja_(hoja);
+    var cIdx       = cohortsMem.idx;
+    var iCode      = cIdx["CohortCode"];
+
+    if (iCode === undefined) {
+      Logger.log("ERROR: Columna CohortCode no encontrada en _CFG_COHORTS.");
+      return;
+    }
+
+    var existentes = {};
+    cohortsMem.datos.forEach(function(row) {
+      var code = String(row[iCode] || "").trim();
+      if (code) existentes[code] = true;
+    });
+
+    // Definir los 6 cohortes 2025 a agregar (FB25 se omite — ya existe)
+    var nuevos2025 = [
+      ["coh_EN25","EN25","Enero 2025",      2025,"DIR",true,"","",ahora,ejecutor,"",""],
+      ["coh_MR25","MR25","Marzo 2025",      2025,"DIR",true,"","",ahora,ejecutor,"",""],
+      ["coh_MY25","MY25","Mayo 2025",       2025,"DIR",true,"","",ahora,ejecutor,"",""],
+      ["coh_AB25","AB25","Abril 2025",      2025,"ART",true,"","",ahora,ejecutor,"",""],
+      ["coh_AG25","AG25","Agosto 2025",     2025,"DIR",true,"","",ahora,ejecutor,"",""],
+      ["coh_SP25","SP25","Septiembre 2025", 2025,"DIR",true,"","",ahora,ejecutor,"",""]
+    ];
+
+    // Filtrar solo los que no existen
+    var paraAgregar = nuevos2025.filter(function(row) {
+      return !existentes[row[1]]; // row[1] = CohortCode
+    });
+
+    if (paraAgregar.length === 0) {
+      Logger.log("   Ya existen todos los cohortes 2025 en _CFG_COHORTS — sin cambios.");
+      return;
+    }
+
+    // Agregar al final de los datos existentes
+    paraAgregar.forEach(function(row) {
+      cohortsMem.datos.push(row);
+    });
+
+    _escribirEnBatch_(hoja, cohortsMem);
+
+    var codigos = paraAgregar.map(function(row) { return row[1]; });
+    Logger.log("   Cohortes agregados: " + codigos.join(", "));
+    Logger.log("════════════════════════════════════════════════");
+    Logger.log("   Total nuevos: " + paraAgregar.length);
+    Logger.log("════════════════════════════════════════════════");
+
+  } catch (e) {
+    Logger.log("ERROR en registrarCohortesHistoricos: " + e.message);
+    throw e;
+  }
+}
+
+
+/**
  * Pobla todas las tablas _CFG_* del SIDEP_01_CORE_ACADEMICO.
  * @param {Object}  options
  * @param {boolean} options.force — true: limpia y reescribe. Default: false
@@ -251,7 +342,7 @@ function poblarConfiguraciones(options) {
   var ejecutor = Session.getEffectiveUser().getEmail();
 
   Logger.log("════════════════════════════════════════════════");
-  Logger.log("🌱 SIDEP — poblarConfiguraciones v2.0");
+  Logger.log("🌱 SIDEP — poblarConfiguraciones v2.1");
   Logger.log("   Ejecutor : " + ejecutor);
   Logger.log("   Modo     : " + (force ? "FORCE (reescribe todo)" : "SAFE (salta si existe)"));
   Logger.log("════════════════════════════════════════════════");
@@ -384,6 +475,12 @@ function poblarCohorts_(ss, ahora, ejecutor) {
   //   SP26 (DIR+ART): C1M1 DIR + A1B4 ART desde 29-sep. Activo — ventana compartida.
   //                  Pool: Carlos decide si ART comparte aulas con DIR.
   escribirDatos(ss, "_CFG_COHORTS", [
+    ["coh_EN25","EN25","Enero 2025",      2025,"DIR",true,"","",ahora,ejecutor,"",""],
+    ["coh_MR25","MR25","Marzo 2025",      2025,"DIR",true,"","",ahora,ejecutor,"",""],
+    ["coh_MY25","MY25","Mayo 2025",       2025,"DIR",true,"","",ahora,ejecutor,"",""],
+    ["coh_AB25","AB25","Abril 2025",      2025,"ART",true,"","",ahora,ejecutor,"",""],
+    ["coh_AG25","AG25","Agosto 2025",     2025,"DIR",true,"","",ahora,ejecutor,"",""],
+    ["coh_SP25","SP25","Septiembre 2025", 2025,"DIR",true,"","",ahora,ejecutor,"",""],
     ["coh_FB25","FB25","Febrero 2025",    2025,"DIR",true, "","",ahora,ejecutor,"",""],
     ["coh_EN26","EN26","Enero 2026",      2026,"DIR",true, "","",ahora,ejecutor,"",""],
     ["coh_FB26","FB26","Febrero 2026",    2026,"ART",true, "","",ahora,ejecutor,"",""],
