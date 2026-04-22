@@ -116,6 +116,10 @@ function onOpenPanel(e) {
     .addItem("🚦 Refrescar semáforo",            "refrescarSemaforo")
     .addSeparator()
 
+    // — CONSULTAS —
+    .addItem("📅 Generar horario semanal",        "generarHorarioSemanal")
+    .addSeparator()
+
     // — SALIDA —
     .addItem("📄 Generar boletín",               "generarBoletin")
 
@@ -210,6 +214,7 @@ function setupPanelAcademico() {
       _crearHojaDetallePlaceholder_(ss, prog);
     });
     _crearHojaBoletin_(ss);
+    _crearHojaHorario_(ss);
 
     // Eliminar hoja por defecto si existe
     ["Sheet1", "Hoja 1", "Hoja1"].forEach(function(nombre) {
@@ -611,6 +616,128 @@ function generarBoletin() {
 }
 
 
+/**
+ * Genera la hoja HORARIO_SEMANAL con todas las clases activas
+ * ordenadas por día de la semana y hora de inicio.
+ *
+ * Fuentes: TeacherAssignments (adminSS) + MasterDeployments + Teachers +
+ *          _CFG_SUBJECTS (todos en coreSS).
+ * Filtros: IsActive=true en TeacherAssignment y ScriptStatusCode=CREATED en MasterDeployments.
+ */
+function generarHorarioSemanal() {
+  var ahora = nowSIDEP();
+  Logger.log("════════════════════════════════════════════════");
+  Logger.log("SIDEP — generarHorarioSemanal");
+  Logger.log("════════════════════════════════════════════════");
+
+  try {
+    var panelSS = _getPanelSS_();
+    var coreSS  = getSpreadsheetByName("core");
+    var adminSS = getSpreadsheetByName("admin");
+
+    // ── Leer tablas en memoria ────────────────────────────────
+    var memTch  = _leerHoja_(coreSS.getSheetByName("Teachers"));
+    var memAsig = _leerHoja_(adminSS.getSheetByName("TeacherAssignments"));
+    var memDepl = _leerHoja_(coreSS.getSheetByName("MasterDeployments"));
+    var memSubj = _leerHoja_(coreSS.getSheetByName("_CFG_SUBJECTS"));
+
+    var tIdx = memTch.idx;
+    var aIdx = memAsig.idx;
+    var dIdx = memDepl.idx;
+    var sIdx = memSubj.idx;
+
+    // ── Índice de docentes: teacherId → nombre completo ────────
+    var teacherMap = {};
+    memTch.datos.forEach(function(row) {
+      var id = String(row[tIdx["TeacherID"]] || "").trim();
+      if (!id) return;
+      var first = String(row[tIdx["FirstName"]] || "").trim();
+      var last  = String(row[tIdx["LastName"]]  || "").trim();
+      teacherMap[id] = (first + " " + last).trim();
+    });
+
+    // ── Índice de deployments: deploymentId → metadata ────────
+    var deplMap = {};
+    memDepl.datos.forEach(function(row) {
+      var id = String(row[dIdx["DeploymentID"]] || "").trim();
+      if (!id) return;
+      deplMap[id] = {
+        subjectCode: String(row[dIdx["SubjectCode"]]      || "").trim(),
+        programCode: String(row[dIdx["ProgramCode"]]      || "").trim(),
+        cohortCode:  String(row[dIdx["CohortCode"]]       || "").trim(),
+        momentCode:  String(row[dIdx["MomentCode"]]       || "").trim(),
+        classroomURL:String(row[dIdx["ClassroomURL"]]     || "").trim(),
+        status:      String(row[dIdx["ScriptStatusCode"]] || "").trim()
+      };
+    });
+
+    // ── Índice de asignaturas: subjectCode → nombre ────────────
+    var subjectMap = {};
+    memSubj.datos.forEach(function(row) {
+      var code = String(row[sIdx["SubjectCode"]] || "").trim();
+      var name = String(row[sIdx["SubjectName"]] || "").trim();
+      if (code) subjectMap[code] = name;
+    });
+
+    // ── Orden canónico de días ────────────────────────────────
+    var DAY_ORDER = {
+      LUNES: 1, MARTES: 2, MIERCOLES: 3, MIÉRCOLES: 3,
+      JUEVES: 4, VIERNES: 5, SABADO: 6, SÁBADO: 6
+    };
+
+    // ── Construir filas del horario ───────────────────────────
+    var filas = [];
+    memAsig.datos.forEach(function(row) {
+      var activo = row[aIdx["IsActive"]];
+      if (activo !== true && String(activo).toUpperCase() !== "TRUE") return;
+
+      var teacherId = String(row[aIdx["TeacherID"]]    || "").trim();
+      var deployId  = String(row[aIdx["DeploymentID"]] || "").trim();
+      var dayOfWeek = String(row[aIdx["DayOfWeek"]]    || "").trim().toUpperCase();
+      var startTime = _formatearTiempoPanel_(row[aIdx["StartTime"]]);
+      var endTime   = _formatearTiempoPanel_(row[aIdx["EndTime"]]);
+
+      if (!deployId || !dayOfWeek) return;
+
+      var depl = deplMap[deployId];
+      if (!depl || depl.status !== "CREATED") return;
+
+      var subjectName = subjectMap[depl.subjectCode] || depl.subjectCode;
+      var docente     = teacherMap[teacherId] || "";
+
+      filas.push({
+        dayOrder:    DAY_ORDER[dayOfWeek] || 99,
+        dayOfWeek:   dayOfWeek,
+        startTime:   startTime,
+        endTime:     endTime,
+        subjectName: subjectName,
+        subjectCode: depl.subjectCode,
+        programCode: depl.programCode,
+        cohortCode:  depl.cohortCode,
+        momentCode:  depl.momentCode,
+        classroomURL:depl.classroomURL,
+        docente:     docente
+      });
+    });
+
+    // Ordenar por día y hora de inicio
+    filas.sort(function(a, b) {
+      if (a.dayOrder !== b.dayOrder) return a.dayOrder - b.dayOrder;
+      return a.startTime.localeCompare(b.startTime);
+    });
+
+    _poblarHojaHorario_(panelSS, filas, ahora);
+
+    Logger.log("   Clases activas encontradas: " + filas.length);
+    Logger.log("════════════════════════════════════════════════");
+
+  } catch (e) {
+    Logger.log("ERROR en generarHorarioSemanal: " + e.message);
+    throw e;
+  }
+}
+
+
 // ─────────────────────────────────────────────────────────────
 // SECCIÓN 2: FUNCIONES PRIVADAS DE SETUP
 // ─────────────────────────────────────────────────────────────
@@ -755,6 +882,33 @@ function _crearHojaDetallePlaceholder_(ss, programCode) {
   hoja.getRange("A2").setValue(
     "Ejecuta Panel Académico → Refrescar semáforo para poblar esta hoja."
   ).setFontStyle("italic").setFontColor("#666666");
+}
+
+
+/**
+ * Crea la hoja HORARIO_SEMANAL con headers y formato inicial.
+ */
+function _crearHojaHorario_(ss) {
+  var hoja = ss.insertSheet("HORARIO_SEMANAL");
+  hoja.setTabColor("#0097a7"); // cian
+
+  var headers = [
+    "Día", "Inicio", "Fin", "Asignatura", "Cód.",
+    "Programa", "Cohorte", "Momento", "Docente", "Aula Virtual"
+  ];
+
+  hoja.getRange(1, 1, 1, headers.length).setValues([headers])
+    .setBackground(PANEL_CONFIG.COLOR.HEADER)
+    .setFontColor("#ffffff")
+    .setFontWeight("bold");
+
+  var anchos = [90, 70, 70, 240, 70, 90, 90, 90, 200, 120];
+  anchos.forEach(function(ancho, i) {
+    hoja.setColumnWidth(i + 1, ancho);
+  });
+
+  hoja.setFrozenRows(1);
+  hoja.setFrozenColumns(2);
 }
 
 
@@ -1488,6 +1642,127 @@ function _colorSemaforo_(color) {
     case "RED":    return PANEL_CONFIG.COLOR.RED;
     default:       return PANEL_CONFIG.COLOR.GREY;
   }
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// SECCIÓN 7: HELPERS DEL HORARIO SEMANAL
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Escribe las filas del horario en la hoja HORARIO_SEMANAL.
+ * Agrupa visualmente por día con fondos alternados y añade
+ * un hiperlink en la columna "Aula Virtual".
+ *
+ * @param {Spreadsheet} panelSS — spreadsheet del panel
+ * @param {Array}       filas   — objetos de clase ordenados por dayOrder + startTime
+ * @param {Date}        ahora   — timestamp para el pie de página
+ */
+function _poblarHojaHorario_(panelSS, filas, ahora) {
+  var hoja = panelSS.getSheetByName("HORARIO_SEMANAL");
+  if (!hoja) return;
+
+  // Limpiar datos anteriores (conservar header)
+  var lastRow = hoja.getLastRow();
+  if (lastRow > 1) {
+    hoja.getRange(2, 1, lastRow - 1, 10).clearContent().clearFormat();
+  }
+
+  if (filas.length === 0) {
+    hoja.getRange(2, 1).setValue("Sin clases activas registradas.")
+      .setFontStyle("italic").setFontColor("#999999");
+    return;
+  }
+
+  // Paleta de colores por día (alternada para lectura rápida)
+  var DAY_COLORS = {
+    LUNES:     "#e8f0fe",  // azul claro
+    MARTES:    "#e6f4ea",  // verde claro
+    MIERCOLES: "#fce8b2",  // amarillo claro
+    MIÉRCOLES: "#fce8b2",
+    JUEVES:    "#fce5cd",  // naranja claro
+    VIERNES:   "#e8d5f0",  // lavanda
+    SABADO:    "#fce8f3",  // rosa claro
+    SÁBADO:    "#fce8f3"
+  };
+
+  var valores   = [];
+  var colores   = [];
+
+  filas.forEach(function(f) {
+    var bg = DAY_COLORS[f.dayOfWeek] || PANEL_CONFIG.COLOR.GREY;
+
+    valores.push([
+      f.dayOfWeek,   // A: Día
+      f.startTime,   // B: Inicio
+      f.endTime,     // C: Fin
+      f.subjectName, // D: Asignatura
+      f.subjectCode, // E: Cód.
+      f.programCode, // F: Programa
+      f.cohortCode,  // G: Cohorte
+      f.momentCode,  // H: Momento
+      f.docente,     // I: Docente
+      f.classroomURL // J: Aula Virtual (URL cruda — se convierte en fórmula abajo)
+    ]);
+
+    colores.push(new Array(10).fill(bg));
+  });
+
+  var dataRange = hoja.getRange(2, 1, valores.length, 10);
+  dataRange.setValues(valores);
+  dataRange.setBackgrounds(colores);
+
+  // Convertir columna J (Aula Virtual) a hipervínculo cuando hay URL
+  for (var i = 0; i < filas.length; i++) {
+    var url = filas[i].classroomURL;
+    if (url) {
+      var fila = i + 2;
+      hoja.getRange(fila, 10)
+        .setFormula('=HYPERLINK("' + url + '","Abrir Aula")')
+        .setFontColor("#1155cc")
+        .setFontStyle("normal");
+    }
+  }
+
+  // Línea separadora entre grupos de días
+  var currentDay = "";
+  for (var j = 0; j < filas.length; j++) {
+    if (filas[j].dayOfWeek !== currentDay) {
+      currentDay = filas[j].dayOfWeek;
+      if (j > 0) {
+        hoja.getRange(j + 2, 1, 1, 10)
+          .setBorder(true, false, false, false, false, false,
+                     "#666666", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+      }
+    }
+  }
+
+  // Pie de actualización
+  var piedePagina = hoja.getLastRow() + 2;
+  var fechaStr = Utilities.formatDate(ahora, SIDEP_CONFIG.timezone, "dd/MM/yyyy HH:mm");
+  hoja.getRange(piedePagina, 1, 1, 10).merge()
+    .setValue("Actualizado: " + fechaStr + " | " + filas.length + " clases activas")
+    .setFontSize(8).setFontStyle("italic").setFontColor("#999999");
+
+  SpreadsheetApp.flush();
+}
+
+
+/**
+ * Convierte un valor de tiempo (Date o string) a formato "HH:mm".
+ * Sheets devuelve tiempos como Date(1899-12-30 HH:MM:SS).
+ *
+ * @param {Date|string} val — valor de celda de tiempo
+ * @returns {string} "HH:mm" o "" si está vacío
+ */
+function _formatearTiempoPanel_(val) {
+  if (!val && val !== 0) return "";
+  if (val instanceof Date) {
+    var h = val.getHours();
+    var m = val.getMinutes();
+    return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
+  }
+  return String(val).trim();
 }
 
 
