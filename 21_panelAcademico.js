@@ -38,9 +38,10 @@
 // ─────────────────────────────────────────────────────────────
 
 const PANEL_CONFIG = {
-  NOMBRE:    "SIDEP_PANEL_ACADEMICO",
-  PROP_KEY:  "sidep_panelAcademicoId",
-  PROGRAMAS: ["CTB", "ADM", "SIS", "MKT", "SST"],
+  NOMBRE:           "SIDEP_PANEL_ACADEMICO",
+  PROP_KEY:         "sidep_panelAcademicoId",
+  PROGRAMAS:        ["CTB", "ADM", "SIS", "MKT", "SST"],
+  HOJA_PENDIENTES:  "PENDIENTES_POR_PROGRAMA",
   COLOR: {
     GREEN:       "#b7e1cd",
     YELLOW:      "#fce8b2",
@@ -96,7 +97,8 @@ const PANEL_CONFIG = {
  *   ├── 🚦 Refrescar semáforo (solo repinta)
  *
  *   — SALIDA —
- *   └── 📄 Generar boletín
+ *   ├── 📄 Generar boletín
+ *   └── 📊 Generar resumen pendientes
  */
 function onOpenPanel(e) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -121,6 +123,7 @@ function onOpenPanel(e) {
 
     // — SALIDA —
     .addItem("📄 Generar boletín",               "generarBoletin")
+    .addItem("📊 Generar resumen pendientes",    "generarResumenPendientes")
 
     .addToUi();
 }
@@ -213,6 +216,7 @@ function setupPanelAcademico() {
       _crearHojaDetallePlaceholder_(ss, prog);
     });
     _crearHojaBoletin_(ss);
+    _crearHojaResumenPendientes_(ss);
 
     // Eliminar hoja por defecto si existe
     ["Sheet1", "Hoja 1", "Hoja1"].forEach(function(nombre) {
@@ -658,6 +662,53 @@ function generarBoletin() {
 }
 
 
+/**
+ * Genera el resumen global de asignaturas pendientes por programa.
+ *
+ * Lee la celda B3 de la hoja PENDIENTES_POR_PROGRAMA (dropdown con
+ * "Todos" | "DIRECTO" | "ARTICULADO") y reconstruye la tabla agregada.
+ *
+ * Para cada (programa, asignatura) cuenta:
+ *   • Aprobados   = Estudiantes con GradeHistory.Estado=APROBADO
+ *   • Con débito  = Estudiantes con AcademicDebts.DebtStatusCode=DEBT_PENDING
+ *   • Pendientes  = N − Aprobados − ConDébito
+ *   • Total       = Pendientes + ConDébito (los que aún deben aprobarla)
+ *
+ * Las asignaturas con Total = 0 se ocultan (Opción A — foco en lo accionable).
+ * Las TRV se agrupan al final, aplican a todos los estudiantes del filtro.
+ */
+function generarResumenPendientes() {
+  var ahora = nowSIDEP();
+  Logger.log("════════════════════════════════════════════════");
+  Logger.log("SIDEP — generarResumenPendientes");
+  Logger.log("════════════════════════════════════════════════");
+
+  try {
+    var panelSS = _getPanelSS_();
+    var hoja    = panelSS.getSheetByName(PANEL_CONFIG.HOJA_PENDIENTES);
+    if (!hoja) throw new Error(
+      "Hoja " + PANEL_CONFIG.HOJA_PENDIENTES + " no encontrada. " +
+      "Ejecuta setupPanelAcademico() primero."
+    );
+
+    // Leer filtro de B3 (default = "Todos" si está vacío)
+    var filtro = String(hoja.getRange("B3").getValue() || "").trim();
+    if (!filtro) filtro = "Todos";
+    Logger.log("   Filtro modalidad: " + filtro);
+
+    var ctx = _cargarContextoPanel_();
+    _poblarHojaResumenPendientes_(panelSS, hoja, ctx, filtro, ahora);
+
+    Logger.log("   Resumen generado.");
+    Logger.log("════════════════════════════════════════════════");
+
+  } catch (e) {
+    Logger.log("ERROR en generarResumenPendientes: " + e.message);
+    throw e;
+  }
+}
+
+
 // ─────────────────────────────────────────────────────────────
 // SECCIÓN 2: FUNCIONES PRIVADAS DE SETUP
 // ─────────────────────────────────────────────────────────────
@@ -841,6 +892,47 @@ function _crearHojaBoletin_(ss) {
 
   // Freeze primeras 3 filas
   hoja.setFrozenRows(3);
+}
+
+
+/**
+ * Crea la hoja PENDIENTES_POR_PROGRAMA con cabecera fija y dropdown
+ * de filtro en B3 (Todos | DIRECTO | ARTICULADO).
+ *
+ * El contenido a partir de la fila 5 lo escribe _poblarHojaResumenPendientes_
+ * cada vez que se ejecuta generarResumenPendientes() desde el menú.
+ */
+function _crearHojaResumenPendientes_(ss) {
+  var hoja = ss.insertSheet(PANEL_CONFIG.HOJA_PENDIENTES);
+  hoja.setTabColor("#ff9800");
+
+  // Fila 1: título institucional
+  hoja.getRange("A1:F1").merge()
+    .setValue("RESUMEN GLOBAL DE ASIGNATURAS PENDIENTES POR PROGRAMA")
+    .setFontSize(14).setFontWeight("bold").setFontColor("#ffffff")
+    .setBackground(PANEL_CONFIG.COLOR.HEADER)
+    .setHorizontalAlignment("center");
+
+  // Fila 3: filtro por modalidad
+  hoja.getRange("A3").setValue("Filtrar por modalidad:")
+    .setFontWeight("bold").setBackground("#dae8fc").setFontColor("#1a3c5e");
+  hoja.getRange("B3").setValue("Todos")
+    .setBackground(PANEL_CONFIG.COLOR.EDITABLE).setFontWeight("bold");
+
+  var regla = SpreadsheetApp.newDataValidation()
+    .requireValueInList(["Todos", "DIRECTO", "ARTICULADO"], true)
+    .setAllowInvalid(false)
+    .build();
+  hoja.getRange("B3").setDataValidation(regla);
+
+  hoja.getRange("D3").setValue("→ Menú: Panel Académico → 📊 Generar resumen pendientes")
+    .setFontStyle("italic").setFontColor("#666666");
+
+  // Anchos de columna
+  var anchos = [80, 280, 100, 130, 80, 180];
+  anchos.forEach(function(ancho, i) { hoja.setColumnWidth(i + 1, ancho); });
+
+  hoja.setFrozenRows(4);
 }
 
 
@@ -1291,6 +1383,262 @@ function _actualizarListaBoletin_(panelSS, ctx) {
     .build();
 
   hoja.getRange("B3").setDataValidation(regla);
+}
+
+
+/**
+ * Pobla la hoja PENDIENTES_POR_PROGRAMA con un bloque por programa más una
+ * sección final con asignaturas TRV. Aplica el filtro de modalidad recibido.
+ *
+ * Filtro de modalidad y aplicabilidad de asignatura (B/B):
+ *   • "Todos"      → cuenta DIR + ART. Asignatura aplica si tiene DirStartMoment
+ *                     o ArtStartBlock — se filtran estudiantes elegibles por
+ *                     cada subconjunto (un DIR no se cuenta en una asignatura
+ *                     que solo tiene ArtStartBlock, y viceversa).
+ *   • "DIRECTO"    → solo StudentType=DIRECTO. Solo asignaturas con DirStartMoment.
+ *   • "ARTICULADO" → solo StudentType=ARTICULADO. Solo asignaturas con ArtStartBlock.
+ *
+ * @param {Spreadsheet} panelSS
+ * @param {Sheet}       hoja
+ * @param {object}      ctx
+ * @param {string}      filtro — "Todos" | "DIRECTO" | "ARTICULADO"
+ * @param {Date}        ahora
+ */
+function _poblarHojaResumenPendientes_(panelSS, hoja, ctx, filtro, ahora) {
+  // ── Limpiar contenido a partir de fila 5 (preservar cabecera + B3) ──
+  var lastRow = hoja.getLastRow();
+  if (lastRow >= 5) {
+    hoja.getRange(5, 1, lastRow - 4, 6).clearContent().clearFormat();
+  }
+
+  var stIdx   = ctx.studentsIdx;
+  var sIdx    = ctx.subjectsIdx;
+  var progIdx = ctx.programsIdx;
+
+  // ── Cargar AcademicDebts una sola vez e indexar por (StudentID, SubjectCode) ──
+  var debtsMem = _leerHoja_(ctx.adminSS.getSheetByName("AcademicDebts"));
+  var dIdx     = debtsMem.idx;
+  var debtSet  = {};   // { studentId|subjectCode: true } — solo DEBT_PENDING
+
+  debtsMem.datos.forEach(function(row) {
+    var sid    = String(row[dIdx["StudentID"]]      || "").trim();
+    var subj   = String(row[dIdx["SubjectCode"]]    || "").trim();
+    var status = String(row[dIdx["DebtStatusCode"]] || "").trim();
+    if (sid && subj && status === "DEBT_PENDING") {
+      debtSet[sid + "|" + subj] = true;
+    }
+  });
+
+  // ── Helper: ¿el estudiante coincide con el filtro de modalidad? ──
+  function cumpleFiltro_(studentType) {
+    if (filtro === "Todos")      return true;
+    return studentType === filtro;
+  }
+
+  // ── Helper: ¿la asignatura aplica a un StudentType dado? ──
+  // Se determina por la presencia de DirStartMoment / ArtStartBlock en _CFG_SUBJECTS.
+  function asignaturaAplicaAEstudiante_(subRow, studentType) {
+    var dirMom = String(subRow[sIdx["DirStartMoment"]] || "").trim();
+    var artMom = String(subRow[sIdx["ArtStartBlock"]]  || "").trim();
+    if (studentType === "DIRECTO")    return dirMom !== "";
+    if (studentType === "ARTICULADO") return artMom !== "";
+    return false;
+  }
+
+  // ── Helper: ¿la asignatura debe aparecer del todo bajo el filtro actual? ──
+  function asignaturaVisible_(subRow) {
+    var dirMom = String(subRow[sIdx["DirStartMoment"]] || "").trim();
+    var artMom = String(subRow[sIdx["ArtStartBlock"]]  || "").trim();
+    if (filtro === "DIRECTO")    return dirMom !== "";
+    if (filtro === "ARTICULADO") return artMom !== "";
+    return dirMom !== "" || artMom !== "";   // "Todos"
+  }
+
+  // ── Construir índice rápido: estudiante aprobado en (subjectCode) ──
+  // Se basa en bestGrades (que ya es una agregación de GradeHistory por mejor nota).
+  // Aprobado = nota ≥ UMBRAL_APROBACION.
+  var umbralAprob = ctx.cfg.UMBRAL_APROBACION || 3.0;
+  function estaAprobada_(studentId, subjectCode) {
+    var bg = ctx.bestGrades[studentId + "|" + subjectCode];
+    return bg && bg.nota !== null && !isNaN(bg.nota) && bg.nota >= umbralAprob;
+  }
+
+  // ── Pre-clasificar estudiantes activos por programa y modalidad ──────
+  var estudiantesActivos = {};   // { programCode: [{ id, type } ...] }
+  Object.keys(ctx.students).forEach(function(sid) {
+    var st     = ctx.students[sid];
+    var status = String(st[stIdx["StudentStatusCode"]] || "").trim();
+    if (status !== "ACTIVE") return;
+
+    var stype  = String(st[stIdx["StudentType"]]  || "").trim();
+    if (!cumpleFiltro_(stype)) return;
+
+    var prog   = String(st[stIdx["ProgramCode"]] || "").trim();
+    if (!prog) return;
+
+    if (!estudiantesActivos[prog]) estudiantesActivos[prog] = [];
+    estudiantesActivos[prog].push({ id: sid, type: stype });
+  });
+
+  // ── Procesar cada programa ───────────────────────────────────────────
+  var fila    = 5;
+  var totalProgramas    = 0;
+  var totalAsigVisibles = 0;
+
+  PANEL_CONFIG.PROGRAMAS.forEach(function(progCode) {
+    var subjectsProg = (ctx.subjectsByProgram[progCode] || []).filter(asignaturaVisible_);
+    var alumnos      = estudiantesActivos[progCode] || [];
+
+    if (subjectsProg.length === 0 || alumnos.length === 0) return;
+
+    var progRow    = ctx.programs[progCode];
+    var progNombre = progRow ? String(progRow[progIdx["ProgramName"]] || progCode).trim() : progCode;
+
+    // Calcular filas de cada asignatura para este programa
+    var filasProg = [];
+    subjectsProg.forEach(function(subRow) {
+      var subCode = String(subRow[sIdx["SubjectCode"]] || "").trim();
+      var subName = String(subRow[sIdx["SubjectName"]] || "").trim();
+
+      // N = alumnos del programa elegibles para esta asignatura
+      var elegibles = alumnos.filter(function(a) {
+        return asignaturaAplicaAEstudiante_(subRow, a.type);
+      });
+      if (elegibles.length === 0) return;
+
+      var aprobados = 0, conDebito = 0;
+      elegibles.forEach(function(a) {
+        if (estaAprobada_(a.id, subCode))                    aprobados++;
+        else if (debtSet[a.id + "|" + subCode] === true)     conDebito++;
+      });
+      var pendientes = elegibles.length - aprobados - conDebito;
+      var total      = pendientes + conDebito;
+
+      // Opción A: ocultar asignaturas con Total = 0 (todos aprobaron)
+      if (total <= 0) return;
+
+      filasProg.push({
+        code: subCode, name: subName,
+        pendientes: pendientes, conDebito: conDebito, total: total
+      });
+    });
+
+    if (filasProg.length === 0) return;
+    totalProgramas++;
+    totalAsigVisibles += filasProg.length;
+
+    // ── Cabecera del programa ──
+    hoja.getRange(fila, 1, 1, 6).merge()
+      .setValue("▼ PROGRAMA: " + progNombre.toUpperCase() + " (" + progCode + ")" +
+                "    ·    " + alumnos.length + " estudiantes activos" +
+                (filtro !== "Todos" ? " (" + filtro + ")" : ""))
+      .setBackground(PANEL_CONFIG.COLOR.HEADER)
+      .setFontColor("#ffffff").setFontWeight("bold");
+    fila++;
+
+    // ── Headers de la tabla ──
+    var headers = ["Código", "Asignatura", "Pendiente", "Débito académico", "Total", ""];
+    hoja.getRange(fila, 1, 1, 6).setValues([headers])
+      .setBackground("#cfd8dc").setFontWeight("bold").setFontColor("#1a3c5e");
+    fila++;
+
+    // ── Filas ──
+    filasProg.forEach(function(f) {
+      var rowVals = [f.code, f.name, f.pendientes, f.conDebito, f.total, ""];
+      hoja.getRange(fila, 1, 1, 6).setValues([rowVals]);
+
+      // Coloreado: débito > 0 → fondo rojo claro en col D
+      if (f.conDebito > 0) {
+        hoja.getRange(fila, 4).setBackground(PANEL_CONFIG.COLOR.RED);
+      }
+      // Pendientes alto (>50% de elegibles) → fondo amarillo claro en col C
+      // (cálculo aproximado: usamos elegibles del programa como proxy)
+      if (f.pendientes > 0 && f.pendientes > (f.total * 0.5)) {
+        hoja.getRange(fila, 3).setBackground(PANEL_CONFIG.COLOR.YELLOW);
+      }
+      fila++;
+    });
+
+    fila++;   // espacio entre programas
+  });
+
+  // ── Sección TRV (asignaturas transversales) ──────────────────────────
+  if (ctx.trvSubjects.length > 0) {
+    var trvVisibles = ctx.trvSubjects.filter(asignaturaVisible_);
+
+    // Universo de estudiantes para TRV = todos los activos que cumplen el filtro
+    var alumnosTRV = [];
+    Object.keys(estudiantesActivos).forEach(function(p) {
+      alumnosTRV = alumnosTRV.concat(estudiantesActivos[p]);
+    });
+
+    var filasTRV = [];
+    trvVisibles.forEach(function(subRow) {
+      var subCode = String(subRow[sIdx["SubjectCode"]] || "").trim();
+      var subName = String(subRow[sIdx["SubjectName"]] || "").trim();
+
+      var elegibles = alumnosTRV.filter(function(a) {
+        return asignaturaAplicaAEstudiante_(subRow, a.type);
+      });
+      if (elegibles.length === 0) return;
+
+      var aprobados = 0, conDebito = 0;
+      elegibles.forEach(function(a) {
+        if (estaAprobada_(a.id, subCode))                    aprobados++;
+        else if (debtSet[a.id + "|" + subCode] === true)     conDebito++;
+      });
+      var pendientes = elegibles.length - aprobados - conDebito;
+      var total      = pendientes + conDebito;
+      if (total <= 0) return;
+
+      filasTRV.push({
+        code: subCode, name: subName,
+        pendientes: pendientes, conDebito: conDebito, total: total
+      });
+    });
+
+    if (filasTRV.length > 0) {
+      totalAsigVisibles += filasTRV.length;
+
+      hoja.getRange(fila, 1, 1, 6).merge()
+        .setValue("▼ ASIGNATURAS TRANSVERSALES (TRV)    ·    " +
+                  alumnosTRV.length + " estudiantes activos" +
+                  (filtro !== "Todos" ? " (" + filtro + ")" : ""))
+        .setBackground("#1a237e")
+        .setFontColor("#ffffff").setFontWeight("bold");
+      fila++;
+
+      var headersTRV = ["Código", "Asignatura", "Pendiente", "Débito académico", "Total", ""];
+      hoja.getRange(fila, 1, 1, 6).setValues([headersTRV])
+        .setBackground(PANEL_CONFIG.COLOR.TRV).setFontWeight("bold").setFontColor("#1a237e");
+      fila++;
+
+      filasTRV.forEach(function(f) {
+        var rowVals = [f.code, f.name, f.pendientes, f.conDebito, f.total, ""];
+        hoja.getRange(fila, 1, 1, 6).setValues([rowVals])
+          .setBackground(PANEL_CONFIG.COLOR.TRV);
+        if (f.conDebito > 0) {
+          hoja.getRange(fila, 4).setBackground(PANEL_CONFIG.COLOR.RED);
+        }
+        if (f.pendientes > 0 && f.pendientes > (f.total * 0.5)) {
+          hoja.getRange(fila, 3).setBackground(PANEL_CONFIG.COLOR.YELLOW);
+        }
+        fila++;
+      });
+      fila++;
+    }
+  }
+
+  // ── Footer con timestamp y resumen ──
+  var fechaStr = Utilities.formatDate(ahora, SIDEP_CONFIG.timezone, "dd/MM/yyyy HH:mm");
+  hoja.getRange(fila, 1, 1, 6).merge()
+    .setValue("Generado: " + fechaStr + "   ·   " +
+              "Filtro: " + filtro + "   ·   " +
+              totalProgramas + " programa(s) · " +
+              totalAsigVisibles + " asignatura(s) con pendientes")
+    .setFontStyle("italic").setFontColor("#666666").setFontSize(9);
+
+  SpreadsheetApp.flush();
 }
 
 
