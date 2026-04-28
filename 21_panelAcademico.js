@@ -42,14 +42,15 @@ const PANEL_CONFIG = {
   PROP_KEY:  "sidep_panelAcademicoId",
   PROGRAMAS: ["CTB", "ADM", "SIS", "MKT", "SST"],
   COLOR: {
-    GREEN:    "#b7e1cd",
-    YELLOW:   "#fce8b2",
-    RED:      "#f4c7c3",
-    GREY:     "#eeeeee",
-    HEADER:   "#1a3c5e",
-    LOCKED:   "#f8f9fa",
-    EDITABLE: "#e6f4ea",
-    TRV:      "#e8eaf6"
+    GREEN:       "#b7e1cd",
+    YELLOW:      "#fce8b2",
+    RED:         "#f4c7c3",
+    GREY:        "#eeeeee",
+    HEADER:      "#1a3c5e",
+    LOCKED:      "#f8f9fa",
+    EDITABLE:    "#e6f4ea",
+    TRV:         "#e8eaf6",
+    IN_PROGRESS: "#cfe2f3"  // azul claro — notas en curso (Classroom)
   },
   COL_INGRESO: {
     STUDENT_ID:   1,
@@ -91,7 +92,8 @@ const PANEL_CONFIG = {
  *   ├── 💾 Cargar notas a GradeHistory
  *
  *   — CÁLCULO ACADÉMICO —
- *   ├── 🚦 Refrescar semáforo
+ *   ├── 🔄 Refrescar notas Classroom (on-demand)
+ *   ├── 🚦 Refrescar semáforo (solo repinta)
  *
  *   — SALIDA —
  *   └── 📄 Generar boletín
@@ -113,7 +115,8 @@ function onOpenPanel(e) {
     .addSeparator()
 
     // — CÁLCULO ACADÉMICO —
-    .addItem("🚦 Refrescar semáforo",            "refrescarSemaforo")
+    .addItem("🔄 Refrescar notas Classroom",     "refrescarNotasClassroom")
+    .addItem("🚦 Refrescar semáforo (solo repintar)", "refrescarSemaforo")
     .addSeparator()
 
     // — SALIDA —
@@ -576,6 +579,50 @@ function refrescarSemaforo() {
 
 
 /**
+ * Orquestador on-demand: trae notas en curso desde Classroom y repinta el panel.
+ *
+ * PASO 1 — ejecutarSemaforo() (de 20_semaforo.js):
+ *   • Itera Enrollments ACTIVE × MasterDeployments con StatusCode=CREATED.
+ *   • Por cada par, llama Classroom API (CourseWork + StudentSubmissions).
+ *   • Aplica políticas D2 (solo assignedGrade RETURNED) + B2 (vencidas sin
+ *     nota cuentan como 0) + escala 1-5 nativa (DEC-2026-015).
+ *   • Sobrescribe BI/GradeAudit con Fuente=CLASSROOM.
+ *   • NO toca GradeHistory ni AcademicDebts (esas son decisiones definitivas).
+ *
+ * PASO 2 — refrescarSemaforo() (este archivo):
+ *   • Repinta SEMAFORO_RESUMEN, DETALLE_*, BOLETIN dropdown.
+ *   • Las notas definitivas (GradeHistory) tienen prioridad sobre las en curso.
+ *   • Las notas en curso se marcan visualmente con color azul claro (#cfe2f3).
+ *
+ * Esta función NO instala triggers — es 100% on-demand desde el menú del panel.
+ */
+function refrescarNotasClassroom() {
+  Logger.log("════════════════════════════════════════════════");
+  Logger.log("SIDEP — refrescarNotasClassroom (orquestador)");
+  Logger.log("   PASO 1/2: ejecutarSemaforo() → pull desde Classroom");
+  Logger.log("════════════════════════════════════════════════");
+
+  try {
+    ejecutarSemaforo();
+
+    Logger.log("════════════════════════════════════════════════");
+    Logger.log("   PASO 2/2: refrescarSemaforo() → repintar panel");
+    Logger.log("════════════════════════════════════════════════");
+
+    refrescarSemaforo();
+
+    Logger.log("════════════════════════════════════════════════");
+    Logger.log("   refrescarNotasClassroom — COMPLETADO");
+    Logger.log("════════════════════════════════════════════════");
+
+  } catch (e) {
+    Logger.log("ERROR en refrescarNotasClassroom: " + e.message);
+    throw e;
+  }
+}
+
+
+/**
  * Genera el boletín individual del estudiante seleccionado en B3 de BOLETIN.
  */
 function generarBoletin() {
@@ -959,6 +1006,7 @@ function _cargarContextoPanel_() {
     gradeHistoryKeys: gradeHistoryKeys,
     bestGrades:       bestGrades,
     gradeAudit:       gradeAudit,
+    gradeAuditIdx:    gaIdx,         // índices de columnas de GradeAudit (cache)
     currentWindow:    currentWindow,
     cfg:              cfg,
     coreSS:           coreSS,
@@ -1136,7 +1184,10 @@ function _poblarHojaDetalle_(panelSS, programCode, ctx) {
       var subCode = String(sub[sIdx["SubjectCode"]] || "").trim();
       var info    = _getMejorNotaInfo_(studentId, subCode, ctx);
       fila.push(info.nota !== null ? info.nota : "");
-      bgFila.push(_colorSemaforo_(info.color));
+      // En curso (Classroom): azul claro. Definitiva: color del semáforo. Sin datos: gris.
+      bgFila.push(info.isInProgress
+        ? PANEL_CONFIG.COLOR.IN_PROGRESS
+        : _colorSemaforo_(info.color));
     });
 
     var promedio  = _calcularPromedioPanel_(studentId, programCode, ctx);
@@ -1285,48 +1336,94 @@ function _escribirBoletin_(hoja, studentId, ctx, ahora) {
     .setBackground("#dae8fc").setFontWeight("bold").setFontColor("#1a3c5e");
   fila++;
 
-  // Headers de la tabla
-  var tableHeaders = ["Asignatura", "Cód.", "Nota", "Nivel", "Estado", "Débito"];
-  hoja.getRange(fila, 1, 1, 6).setValues([tableHeaders])
-    .setBackground(PANEL_CONFIG.COLOR.HEADER)
-    .setFontColor("#ffffff").setFontWeight("bold");
-  fila++;
-
-  // Asignaturas del programa + TRV
+  // ── Clasificar asignaturas en 3 grupos ──────────────────────────
+  // FINALIZADAS: nota definitiva (Fuente=MANUAL en GradeHistory)
+  // EN_CURSO   : nota provisional (Fuente=CLASSROOM en GradeAudit)
+  // PENDIENTES : sin nota en ninguna fuente
   var allSubjects = (ctx.subjectsByProgram[progCode] || []).concat(ctx.trvSubjects);
   var sIdx        = ctx.subjectsIdx;
 
+  var grupoFinal    = [];
+  var grupoEnCurso  = [];
+  var grupoPendiente= [];
+
   allSubjects.forEach(function(sub) {
-    var subCode  = String(sub[sIdx["SubjectCode"]] || "").trim();
-    var subName  = String(sub[sIdx["SubjectName"]] || "").trim();
-    var isTRV    = String(sub[sIdx["ProgramCode"]] || "").trim() === "TRV";
-    var info     = _getMejorNotaInfo_(studentId, subCode, ctx);
+    var subCode = String(sub[sIdx["SubjectCode"]] || "").trim();
+    var subName = String(sub[sIdx["SubjectName"]] || "").trim();
+    var isTRV   = String(sub[sIdx["ProgramCode"]] || "").trim() === "TRV";
+    var info    = _getMejorNotaInfo_(studentId, subCode, ctx);
 
-    var nivel    = info.nota !== null ? _calcularNivel_(info.nota, ctx.cfg) : "PENDIENTE";
-    var estado   = info.nota !== null
-      ? (info.nota >= (ctx.cfg.UMBRAL_APROBACION || 3.0) ? "APROBADO" : "REPROBADO")
-      : "PENDIENTE";
-    var debito   = (info.nota !== null && info.nota < (ctx.cfg.UMBRAL_APROBACION || 3.0)) ? "SI" : "";
+    var item = { subCode: subCode, subName: subName, isTRV: isTRV, info: info };
 
-    var rowValues = [subName, subCode, info.nota !== null ? info.nota : "", nivel, estado, debito];
-    var rowRange  = hoja.getRange(fila, 1, 1, 6);
-    rowRange.setValues([rowValues]);
-
-    if (isTRV) rowRange.setBackground(PANEL_CONFIG.COLOR.TRV);
-
-    // Colorear celda de nota
-    if (info.nota !== null) {
-      hoja.getRange(fila, 3).setBackground(_colorSemaforo_(info.color));
-    }
-    // Colorear estado
-    hoja.getRange(fila, 5).setBackground(
-      estado === "APROBADO" ? PANEL_CONFIG.COLOR.GREEN :
-      estado === "REPROBADO" ? PANEL_CONFIG.COLOR.RED : PANEL_CONFIG.COLOR.GREY
-    );
-
-    fila++;
+    if (info.nota === null)         grupoPendiente.push(item);
+    else if (info.isInProgress)     grupoEnCurso.push(item);
+    else                            grupoFinal.push(item);
   });
-  fila++;
+
+  // Helper local: pinta una sección de tabla con sus filas
+  function escribirSeccion_(titulo, items, mostrarColEstado) {
+    if (items.length === 0) return;
+
+    // Encabezado de la sección (banda gris suave)
+    hoja.getRange(fila, 1, 1, 6).merge()
+      .setValue(titulo)
+      .setBackground("#e0e0e0").setFontWeight("bold").setFontColor("#333333");
+    fila++;
+
+    // Headers de la tabla
+    var tableHeaders = ["Asignatura", "Cód.", "Nota", "Nivel", "Estado", "Débito"];
+    hoja.getRange(fila, 1, 1, 6).setValues([tableHeaders])
+      .setBackground(PANEL_CONFIG.COLOR.HEADER)
+      .setFontColor("#ffffff").setFontWeight("bold");
+    fila++;
+
+    items.forEach(function(it) {
+      var info   = it.info;
+      var nivel  = info.nota !== null ? _calcularNivel_(info.nota, ctx.cfg) : "PENDIENTE";
+      var estado = info.nota !== null
+        ? (info.isInProgress
+            ? "EN CURSO"
+            : (info.nota >= (ctx.cfg.UMBRAL_APROBACION || 3.0) ? "APROBADO" : "REPROBADO"))
+        : "PENDIENTE";
+      // Solo se reporta débito sobre notas definitivas reprobadas
+      var debito = (!info.isInProgress && info.nota !== null &&
+                    info.nota < (ctx.cfg.UMBRAL_APROBACION || 3.0)) ? "SI" : "";
+
+      var rowValues = [it.subName, it.subCode, info.nota !== null ? info.nota : "",
+                       nivel, estado, debito];
+      var rowRange  = hoja.getRange(fila, 1, 1, 6);
+      rowRange.setValues([rowValues]);
+
+      if (it.isTRV) rowRange.setBackground(PANEL_CONFIG.COLOR.TRV);
+
+      // Colorear celda de nota
+      if (info.nota !== null) {
+        hoja.getRange(fila, 3).setBackground(
+          info.isInProgress
+            ? PANEL_CONFIG.COLOR.IN_PROGRESS
+            : _colorSemaforo_(info.color)
+        );
+      }
+      // Colorear celda de estado
+      var bgEstado;
+      if      (estado === "APROBADO")  bgEstado = PANEL_CONFIG.COLOR.GREEN;
+      else if (estado === "REPROBADO") bgEstado = PANEL_CONFIG.COLOR.RED;
+      else if (estado === "EN CURSO")  bgEstado = PANEL_CONFIG.COLOR.IN_PROGRESS;
+      else                             bgEstado = PANEL_CONFIG.COLOR.GREY;
+      hoja.getRange(fila, 5).setBackground(bgEstado);
+
+      fila++;
+    });
+    fila++; // espacio entre secciones
+  }
+
+  // ── Escribir las 3 secciones en orden ──────────────────────────
+  escribirSeccion_("ASIGNATURAS FINALIZADAS",
+                   grupoFinal, true);
+  escribirSeccion_("ASIGNATURAS EN CURSO (notas provisionales — Classroom)",
+                   grupoEnCurso, true);
+  escribirSeccion_("ASIGNATURAS PENDIENTES",
+                   grupoPendiente, false);
 
   // Sección: Resumen
   hoja.getRange(fila, 1, 1, 6).merge()
@@ -1373,44 +1470,57 @@ function _escribirBoletin_(hoja, studentId, ctx, ahora) {
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Retorna la mejor nota disponible para un estudiante en una asignatura,
- * combinando bestGrades (GradeHistory) y gradeAudit (GradeAudit de BI).
+ * Resuelve la nota a mostrar para un par (estudiante, asignatura) aplicando
+ * la prioridad institucional:
  *
- * @param {string} studentId   — StudentID
- * @param {string} subjectCode — SubjectCode
- * @param {object} ctx         — contexto del panel
- * @returns {{ nota: number|null, color: string }}
+ *   1) GradeHistory (Fuente=MANUAL)         → nota DEFINITIVA — gana siempre.
+ *   2) GradeAudit   (Fuente=CLASSROOM)      → nota EN CURSO   — solo si no hay definitiva.
+ *   3) Sin datos                            → null            — pintado como gris.
+ *
+ * La definitiva trumpea la en-curso por diseño: si una asignatura ya cerró
+ * con una nota final, una calificación parcial posterior en una nueva aula
+ * (caso reintento) NO la sobrescribe en la vista. El reintento se ve en
+ * GradeAudit y se promueve a GradeHistory cuando se cierre el aula.
+ *
+ * @returns {{ nota: number|null, color: string, fuente: string|null, isInProgress: boolean }}
  */
 function _getMejorNotaInfo_(studentId, subjectCode, ctx) {
-  var key         = studentId + "|" + subjectCode;
-  var bestHistorico = ctx.bestGrades[key];    // { nota, nivel, estado }
-  var auditRow    = ctx.gradeAudit[key];      // fila de GradeAudit
-  var gaIdx       = ctx.biSS
-    ? null
-    : null;  // gaIdx se calcula abajo si es necesario
+  var key      = studentId + "|" + subjectCode;
+  var bestHist = ctx.bestGrades[key];   // { nota, nivel, estado } o undefined
+  var auditRow = ctx.gradeAudit[key];   // row de GradeAudit o undefined
 
-  var notaHistorica = bestHistorico ? bestHistorico.nota : null;
-  var notaAudit     = null;
-
-  if (auditRow) {
-    // Necesitamos el índice de Nota en GradeAudit
-    var gaMem = _leerHoja_(ctx.biSS.getSheetByName("GradeAudit"));
-    var gAIdx = gaMem.idx;
-    var rawNota = auditRow[gAIdx["Nota"]];
-    notaAudit = (rawNota !== "" && rawNota !== null && !isNaN(Number(rawNota))) ? Number(rawNota) : null;
+  // 1) Nota definitiva en GradeHistory — prioridad máxima
+  if (bestHist && bestHist.nota !== null && !isNaN(bestHist.nota)) {
+    return {
+      nota:         bestHist.nota,
+      color:        _calcularSemaforo_(bestHist.nota, ctx.cfg),
+      fuente:       "MANUAL",
+      isInProgress: false
+    };
   }
 
-  var mejorNota = null;
-  if (notaHistorica !== null && notaAudit !== null) {
-    mejorNota = Math.max(notaHistorica, notaAudit);
-  } else if (notaHistorica !== null) {
-    mejorNota = notaHistorica;
-  } else if (notaAudit !== null) {
-    mejorNota = notaAudit;
+  // 2) Nota en curso desde GradeAudit (Classroom)
+  if (auditRow && ctx.gradeAuditIdx) {
+    var iNota   = ctx.gradeAuditIdx["Nota"];
+    var iFuente = ctx.gradeAuditIdx["Fuente"];
+    var rawNota = (iNota   !== undefined) ? auditRow[iNota]   : "";
+    var rawFnt  = (iFuente !== undefined) ? auditRow[iFuente] : "";
+    var fuente  = String(rawFnt || "").trim() || "CLASSROOM";
+    var notaNum = (rawNota !== "" && rawNota !== null && !isNaN(Number(rawNota)))
+      ? Number(rawNota)
+      : null;
+    if (notaNum !== null) {
+      return {
+        nota:         notaNum,
+        color:        _calcularSemaforo_(notaNum, ctx.cfg),
+        fuente:       fuente,
+        isInProgress: fuente === "CLASSROOM"
+      };
+    }
   }
 
-  var color = mejorNota !== null ? _calcularSemaforo_(mejorNota, ctx.cfg) : "GREY";
-  return { nota: mejorNota, color: color };
+  // 3) Sin datos — gris
+  return { nota: null, color: "GREY", fuente: null, isInProgress: false };
 }
 
 

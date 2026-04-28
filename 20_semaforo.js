@@ -499,6 +499,15 @@ function _procesarEnrollments_(ctx, ahora, courseWorkCache, resumen) {
       return;
     }
 
+    // ── Solo procesar deployments con aula activa (StatusCode = CREATED) ──
+    // Deployments en otros estados (PENDING, ARCHIVED, ERROR) se omiten:
+    // sus notas finales ya están en GradeHistory (cuando se cerraron) o aún
+    // no aplican (cuando no se han creado).
+    const deployStatus = String(deploy[dIdx["StatusCode"]] || "").trim();
+    if (deployStatus !== "CREATED") {
+      return;
+    }
+
     const subjectCode  = String(deploy[dIdx["SubjectCode"]]  || "").trim();
     const subjectName  = String(deploy[dIdx["SubjectName"]]  || "").trim();
     const classroomId  = String(deploy[dIdx["ClassroomID"]]  || "").trim();
@@ -532,11 +541,11 @@ function _procesarEnrollments_(ctx, ahora, courseWorkCache, resumen) {
       actSinNota    = 0;
 
     } else {
-      // ── Calcular nota desde Classroom API (D2) ───────────────────
+      // ── Calcular nota desde Classroom API (D2 + B2) ──────────────
       fuente = "CLASSROOM";
       const gr = _obtenerGradesClassroom_(classroomId, studentEmail, courseWorkCache);
-      actConNota = gr.actConNota;
-      actSinNota = gr.actSinNota;
+      actConNota = gr.actConNota;       // tareas con nota O vencidas sin nota (=0)
+      actSinNota = gr.actSinNota;       // tareas futuras sin nota
       nota       = gr.notaPromedio;   // null si todo está PENDIENTE
 
       if (nota !== null) {
@@ -600,14 +609,21 @@ function _procesarEnrollments_(ctx, ahora, courseWorkCache, resumen) {
 /**
  * Obtiene las calificaciones publicadas de un estudiante en un aula.
  *
- * Implementa D2: solo assignedGrade con state=RETURNED cuenta como nota.
- * Actividades sin assignedGrade → actSinNota (PENDIENTE).
+ * IMPLEMENTA:
+ *   D2 — Solo assignedGrade con state=RETURNED cuenta como nota.
+ *   B2 — Tareas publicadas cuya fecha límite ya pasó SIN nota cuentan como 0
+ *        (penalización por entrega vencida). Tareas cuya fecha límite aún no
+ *        ha llegado se ignoran del cálculo (esperan al docente / al estudiante).
+ *
  * CourseWork del aula se cachea para evitar llamadas repetidas por aula.
  *
  * @param {string} classroomId     — ClassroomID del deployment
  * @param {string} studentEmail    — email del estudiante (Students.Email)
  * @param {object} courseWorkCache — { [classroomId]: courseWork[] } — mutado aquí
- * @returns {{ notaPromedio: number|null, actConNota: number, actSinNota: number }}
+ * @returns {{ notaPromedio: number|null, actConNota: number, actSinNota: number, actVencidaSinNota: number }}
+ *   actConNota incluye: tareas calificadas + tareas vencidas sin nota (=0).
+ *   actSinNota:        tareas no vencidas sin nota (excluidas del promedio).
+ *   actVencidaSinNota: subset informativo dentro de actConNota.
  */
 function _obtenerGradesClassroom_(classroomId, studentEmail, courseWorkCache) {
   try {
@@ -619,7 +635,7 @@ function _obtenerGradesClassroom_(classroomId, studentEmail, courseWorkCache) {
     const courseWorkList = courseWorkCache[classroomId];
 
     if (courseWorkList.length === 0) {
-      return { notaPromedio: null, actConNota: 0, actSinNota: 0 };
+      return { notaPromedio: null, actConNota: 0, actSinNota: 0, actVencidaSinNota: 0 };
     }
 
     // ── Obtener submissions del estudiante (paginado) ───────────────
@@ -643,33 +659,39 @@ function _obtenerGradesClassroom_(classroomId, studentEmail, courseWorkCache) {
       submByWork[sub.courseWorkId] = sub;
     });
 
-    // ── Calcular nota (D2: solo assignedGrade publicada) ────────────
-    let sumNotas = 0, actConNota = 0, actSinNota = 0;
+    // ── Calcular nota (D2 + B2) ─────────────────────────────────────
+    const ahora = new Date();
+    let sumNotas = 0, actConNota = 0, actSinNota = 0, actVencidaSinNota = 0;
 
     courseWorkList.forEach(function(cw) {
-      const sub = submByWork[cw.id];
+      // Solo CourseWork publicado se considera (DRAFT/DELETED se ignora)
+      if (cw.state && cw.state !== "PUBLISHED") return;
 
-      if (!sub) {
-        // El estudiante aún no tiene submission para esta actividad
-        actSinNota++;
-        return;
+      const sub        = submByWork[cw.id];
+      const venciaPasada = _vencimientoYaPaso_(cw.dueDate, cw.dueTime, ahora);
+
+      // ── Determinar si hay nota válida (D2) ──
+      let notaNorm = null;
+      if (sub && sub.state === "RETURNED" &&
+          sub.assignedGrade !== undefined &&
+          sub.assignedGrade !== null) {
+        const maxPoints = (cw.maxPoints !== undefined && cw.maxPoints > 0) ? cw.maxPoints : 5;
+        notaNorm = _normalizarNota_(sub.assignedGrade, maxPoints);
       }
 
-      // D2: solo RETURNED con assignedGrade publicada por el docente
-      const tieneNota = sub.state === "RETURNED" &&
-                        sub.assignedGrade !== undefined &&
-                        sub.assignedGrade !== null;
-
-      if (tieneNota) {
-        const maxPoints = (cw.maxPoints !== undefined && cw.maxPoints > 0) ? cw.maxPoints : 5;
-        const notaNorm  = _normalizarNota_(sub.assignedGrade, maxPoints);
-        if (notaNorm !== null) {
-          sumNotas += notaNorm;
-          actConNota++;
-        } else {
-          actSinNota++;
-        }
+      if (notaNorm !== null) {
+        // ── Tarea con nota publicada ──
+        sumNotas += notaNorm;
+        actConNota++;
+      } else if (venciaPasada) {
+        // ── B2: tarea vencida sin nota → cuenta como 0 ──
+        // Entra al denominador del promedio penalizando al estudiante.
+        sumNotas += 0;
+        actConNota++;
+        actVencidaSinNota++;
       } else {
+        // ── Tarea sin vencer aún sin nota ──
+        // Se ignora del promedio (no penaliza ni premia mientras tenga plazo).
         actSinNota++;
       }
     });
@@ -678,12 +700,44 @@ function _obtenerGradesClassroom_(classroomId, studentEmail, courseWorkCache) {
       ? Math.round((sumNotas / actConNota) * 100) / 100
       : null;
 
-    return { notaPromedio: notaPromedio, actConNota: actConNota, actSinNota: actSinNota };
+    return {
+      notaPromedio:      notaPromedio,
+      actConNota:        actConNota,
+      actSinNota:        actSinNota,
+      actVencidaSinNota: actVencidaSinNota
+    };
 
   } catch (e) {
     Logger.log("  WARN Classroom API (" + classroomId + " / " + studentEmail + "): " + e.message);
-    return { notaPromedio: null, actConNota: 0, actSinNota: 0 };
+    return { notaPromedio: null, actConNota: 0, actSinNota: 0, actVencidaSinNota: 0 };
   }
+}
+
+
+/**
+ * Determina si la fecha de vencimiento de una tarea de Classroom ya pasó.
+ *
+ * Classroom expone dueDate como { year, month, day } y dueTime como
+ * { hours, minutes, seconds } en UTC. Si dueTime no está, asumimos 23:59
+ * del día (último momento del plazo).
+ *
+ * Si dueDate no existe (tarea sin fecha límite), retorna false — nunca vence.
+ *
+ * @param {object|undefined} dueDate
+ * @param {object|undefined} dueTime
+ * @param {Date}             ahora
+ * @returns {boolean}
+ */
+function _vencimientoYaPaso_(dueDate, dueTime, ahora) {
+  if (!dueDate || !dueDate.year || !dueDate.month || !dueDate.day) return false;
+  const y  = dueDate.year;
+  const m  = dueDate.month - 1;          // JS: 0-indexed
+  const d  = dueDate.day;
+  const hh = (dueTime && dueTime.hours   !== undefined) ? dueTime.hours   : 23;
+  const mm = (dueTime && dueTime.minutes !== undefined) ? dueTime.minutes : 59;
+  // Classroom devuelve dueTime en UTC. Construimos en UTC para comparación correcta.
+  const dueTs = Date.UTC(y, m, d, hh, mm, 0);
+  return ahora.getTime() >= dueTs;
 }
 
 /**
