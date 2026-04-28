@@ -499,11 +499,11 @@ function _procesarEnrollments_(ctx, ahora, courseWorkCache, resumen) {
       return;
     }
 
-    // ── Solo procesar deployments con aula activa (StatusCode = CREATED) ──
-    // Deployments en otros estados (PENDING, ARCHIVED, ERROR) se omiten:
-    // sus notas finales ya están en GradeHistory (cuando se cerraron) o aún
-    // no aplican (cuando no se han creado).
-    const deployStatus = String(deploy[dIdx["StatusCode"]] || "").trim();
+    // ── Solo procesar deployments con aula activa ──────────────────
+    // Filtra por MasterDeployments.ScriptStatusCode = CREATED. Estados
+    // PENDING/ARCHIVED/ERROR se omiten: sus notas finales ya están en
+    // GradeHistory (cuando se cerraron) o aún no aplican.
+    const deployStatus = String(deploy[dIdx["ScriptStatusCode"]] || "").trim();
     if (deployStatus !== "CREATED") {
       return;
     }
