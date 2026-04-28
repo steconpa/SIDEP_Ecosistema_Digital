@@ -977,17 +977,48 @@ function _cargarContextoPanel_() {
     gradeAudit[key] = row;
   });
 
-  // ── ADMIN: Enrollments (ventana actual) ───────────────────────
-  var enrollMem   = _leerHoja_(adminSS.getSheetByName("Enrollments"));
-  var enrollIdx   = enrollMem.idx;
-  var currentWindow = {};
+  // ── CORE: MasterDeployments (para resolver SubjectCode de aulas activas) ──
+  // Indexamos solo deployments con ScriptStatusCode = "CREATED" — el resto
+  // (PENDING/ARCHIVED/ERROR) no se considera aula activa para clasificar
+  // matrículas como "EN CURSO" en el boletín.
+  var deployMem = _leerHoja_(coreSS.getSheetByName("MasterDeployments"));
+  var depIdx    = deployMem.idx;
+  var deployToSubject = {};   // { deploymentId: subjectCode }
+
+  deployMem.datos.forEach(function(row) {
+    var depId  = String(row[depIdx["DeploymentID"]]      || "").trim();
+    var subj   = String(row[depIdx["SubjectCode"]]       || "").trim();
+    var status = String(row[depIdx["ScriptStatusCode"]]  || "").trim();
+    if (depId && subj && status === "CREATED") {
+      deployToSubject[depId] = subj;
+    }
+  });
+
+  // ── ADMIN: Enrollments (ventana actual + asignaturas en curso) ────
+  // currentWindow[studentId]    = WindowCohortCode (uno solo, la ventana activa)
+  // currentSubjects[studentId]  = { subjectCode: true } — asignaturas que el
+  //   estudiante está cursando AHORA (Enrollment ACTIVE × Deployment CREATED).
+  //   Se usa en el boletín y DETALLE_* para clasificar como EN CURSO sin
+  //   importar si la materia ya tiene nota provisional o no.
+  var enrollMem      = _leerHoja_(adminSS.getSheetByName("Enrollments"));
+  var enrollIdx      = enrollMem.idx;
+  var currentWindow  = {};
+  var currentSubjects= {};
 
   enrollMem.datos.forEach(function(row) {
     var sid    = String(row[enrollIdx["StudentID"]]            || "").trim();
     var window = String(row[enrollIdx["WindowCohortCode"]]     || "").trim();
     var status = String(row[enrollIdx["EnrollmentStatusCode"]] || "").trim();
-    if (sid && status === "ACTIVE" && window) {
-      currentWindow[sid] = window;
+    var depId  = String(row[enrollIdx["DeploymentID"]]         || "").trim();
+
+    if (!sid || status !== "ACTIVE") return;
+
+    if (window) currentWindow[sid] = window;
+
+    var subj = deployToSubject[depId];   // solo definido si Deployment está CREATED
+    if (subj) {
+      if (!currentSubjects[sid]) currentSubjects[sid] = {};
+      currentSubjects[sid][subj] = true;
     }
   });
 
@@ -1008,6 +1039,7 @@ function _cargarContextoPanel_() {
     gradeAudit:       gradeAudit,
     gradeAuditIdx:    gaIdx,         // índices de columnas de GradeAudit (cache)
     currentWindow:    currentWindow,
+    currentSubjects:  currentSubjects, // { studentId: { subjectCode: true } } — matrículas activas
     cfg:              cfg,
     coreSS:           coreSS,
     adminSS:          adminSS,
@@ -1180,14 +1212,24 @@ function _poblarHojaDetalle_(panelSS, programCode, ctx) {
       PANEL_CONFIG.COLOR.LOCKED
     ];
 
+    var enCursoMap = ctx.currentSubjects[studentId] || {};
     allSubjects.forEach(function(sub) {
       var subCode = String(sub[sIdx["SubjectCode"]] || "").trim();
       var info    = _getMejorNotaInfo_(studentId, subCode, ctx);
+      var enCurso = enCursoMap[subCode] === true;
+
+      // Valor de la celda
       fila.push(info.nota !== null ? info.nota : "");
-      // En curso (Classroom): azul claro. Definitiva: color del semáforo. Sin datos: gris.
-      bgFila.push(info.isInProgress
-        ? PANEL_CONFIG.COLOR.IN_PROGRESS
-        : _colorSemaforo_(info.color));
+
+      // Color de fondo — semántica triple:
+      //   • Definitiva (MANUAL): color del semáforo según nota
+      //   • En curso (matrícula activa, con o sin nota): azul claro
+      //   • Sin datos (no la cursa, no la ha cursado): gris
+      var bg;
+      if (info.fuente === "MANUAL")             bg = _colorSemaforo_(info.color);
+      else if (info.isInProgress || enCurso)    bg = PANEL_CONFIG.COLOR.IN_PROGRESS;
+      else                                      bg = PANEL_CONFIG.COLOR.GREY;
+      bgFila.push(bg);
     });
 
     var promedio  = _calcularPromedioPanel_(studentId, programCode, ctx);
@@ -1337,11 +1379,14 @@ function _escribirBoletin_(hoja, studentId, ctx, ahora) {
   fila++;
 
   // ── Clasificar asignaturas en 3 grupos ──────────────────────────
-  // FINALIZADAS: nota definitiva (Fuente=MANUAL en GradeHistory)
-  // EN_CURSO   : nota provisional (Fuente=CLASSROOM en GradeAudit)
-  // PENDIENTES : sin nota en ninguna fuente
+  // FINALIZADAS: tiene nota DEFINITIVA  (Fuente=MANUAL en GradeHistory)
+  // EN CURSO   : el estudiante está MATRICULADO ACTIVO en un aula CREATED
+  //              de esa asignatura (con o sin nota provisional). Fuente
+  //              de verdad: Enrollments ∧ MasterDeployments.ScriptStatusCode.
+  // PENDIENTES : asignatura del plan que ni está cerrada ni en curso.
   var allSubjects = (ctx.subjectsByProgram[progCode] || []).concat(ctx.trvSubjects);
   var sIdx        = ctx.subjectsIdx;
+  var enCursoMap  = ctx.currentSubjects[studentId] || {};
 
   var grupoFinal    = [];
   var grupoEnCurso  = [];
@@ -1355,13 +1400,16 @@ function _escribirBoletin_(hoja, studentId, ctx, ahora) {
 
     var item = { subCode: subCode, subName: subName, isTRV: isTRV, info: info };
 
-    if (info.nota === null)         grupoPendiente.push(item);
-    else if (info.isInProgress)     grupoEnCurso.push(item);
-    else                            grupoFinal.push(item);
+    if (info.fuente === "MANUAL")          grupoFinal.push(item);    // nota definitiva
+    else if (enCursoMap[subCode] === true) grupoEnCurso.push(item);  // matrícula activa
+    else                                   grupoPendiente.push(item);
   });
 
-  // Helper local: pinta una sección de tabla con sus filas
-  function escribirSeccion_(titulo, items, mostrarColEstado) {
+  // Helper local: pinta una sección de tabla con sus filas.
+  // tipoSeccion ∈ { "FINAL", "EN_CURSO", "PENDIENTE" } controla el render
+  // para que una asignatura EN CURSO sin nota aún se muestre como "EN CURSO"
+  // y no como "PENDIENTE".
+  function escribirSeccion_(titulo, items, tipoSeccion) {
     if (items.length === 0) return;
 
     // Encabezado de la sección (banda gris suave)
@@ -1377,33 +1425,53 @@ function _escribirBoletin_(hoja, studentId, ctx, ahora) {
       .setFontColor("#ffffff").setFontWeight("bold");
     fila++;
 
-    items.forEach(function(it) {
-      var info   = it.info;
-      var nivel  = info.nota !== null ? _calcularNivel_(info.nota, ctx.cfg) : "PENDIENTE";
-      var estado = info.nota !== null
-        ? (info.isInProgress
-            ? "EN CURSO"
-            : (info.nota >= (ctx.cfg.UMBRAL_APROBACION || 3.0) ? "APROBADO" : "REPROBADO"))
-        : "PENDIENTE";
-      // Solo se reporta débito sobre notas definitivas reprobadas
-      var debito = (!info.isInProgress && info.nota !== null &&
-                    info.nota < (ctx.cfg.UMBRAL_APROBACION || 3.0)) ? "SI" : "";
+    var umbralAprob = ctx.cfg.UMBRAL_APROBACION || 3.0;
 
-      var rowValues = [it.subName, it.subCode, info.nota !== null ? info.nota : "",
-                       nivel, estado, debito];
+    items.forEach(function(it) {
+      var info     = it.info;
+      var tieneNota= info.nota !== null;
+      var notaCell = tieneNota ? info.nota : "";
+
+      // Nivel y Estado — dependen del tipo de sección
+      var nivel, estado;
+      if (tipoSeccion === "FINAL") {
+        // Definitiva: APROBADO/REPROBADO según umbral
+        nivel  = _calcularNivel_(info.nota, ctx.cfg);
+        estado = info.nota >= umbralAprob ? "APROBADO" : "REPROBADO";
+      } else if (tipoSeccion === "EN_CURSO") {
+        // En curso: nivel solo si hay nota provisional, estado siempre "EN CURSO"
+        nivel  = tieneNota ? _calcularNivel_(info.nota, ctx.cfg) : "—";
+        estado = "EN CURSO";
+        if (!tieneNota) notaCell = "Sin nota aún";
+      } else {
+        // Pendiente: ni nivel ni estado significativo
+        nivel  = "—";
+        estado = "PENDIENTE";
+      }
+
+      // Débito: SOLO sobre notas definitivas reprobadas
+      var debito = (tipoSeccion === "FINAL" && info.nota < umbralAprob) ? "SI" : "";
+
+      var rowValues = [it.subName, it.subCode, notaCell, nivel, estado, debito];
       var rowRange  = hoja.getRange(fila, 1, 1, 6);
       rowRange.setValues([rowValues]);
 
       if (it.isTRV) rowRange.setBackground(PANEL_CONFIG.COLOR.TRV);
 
       // Colorear celda de nota
-      if (info.nota !== null) {
+      if (tieneNota) {
         hoja.getRange(fila, 3).setBackground(
-          info.isInProgress
+          tipoSeccion === "EN_CURSO"
             ? PANEL_CONFIG.COLOR.IN_PROGRESS
             : _colorSemaforo_(info.color)
         );
+      } else if (tipoSeccion === "EN_CURSO") {
+        // Celda informativa "Sin nota aún" con fondo azul claro
+        hoja.getRange(fila, 3)
+          .setBackground(PANEL_CONFIG.COLOR.IN_PROGRESS)
+          .setFontStyle("italic").setFontColor("#666666").setFontSize(9);
       }
+
       // Colorear celda de estado
       var bgEstado;
       if      (estado === "APROBADO")  bgEstado = PANEL_CONFIG.COLOR.GREEN;
@@ -1419,11 +1487,11 @@ function _escribirBoletin_(hoja, studentId, ctx, ahora) {
 
   // ── Escribir las 3 secciones en orden ──────────────────────────
   escribirSeccion_("ASIGNATURAS FINALIZADAS",
-                   grupoFinal, true);
-  escribirSeccion_("ASIGNATURAS EN CURSO (notas provisionales — Classroom)",
-                   grupoEnCurso, true);
-  escribirSeccion_("ASIGNATURAS PENDIENTES",
-                   grupoPendiente, false);
+                   grupoFinal, "FINAL");
+  escribirSeccion_("ASIGNATURAS EN CURSO (matriculadas — notas provisionales)",
+                   grupoEnCurso, "EN_CURSO");
+  escribirSeccion_("ASIGNATURAS PENDIENTES (sin cursar aún)",
+                   grupoPendiente, "PENDIENTE");
 
   // Sección: Resumen
   hoja.getRange(fila, 1, 1, 6).merge()
@@ -1547,8 +1615,11 @@ function _calcularCreditos_(studentId, programCode, ctx) {
 
     total += credits;
 
+    // Un crédito solo se considera "completado" cuando la nota es DEFINITIVA
+    // (Fuente=MANUAL en GradeHistory) y aprueba. Notas EN CURSO (Classroom)
+    // pueden cambiar antes del cierre del aula — no inflan el % de avance.
     var info = _getMejorNotaInfo_(studentId, subCode, ctx);
-    if (info.nota !== null && info.nota >= umbral) {
+    if (info.fuente === "MANUAL" && info.nota !== null && info.nota >= umbral) {
       completados += credits;
     }
   });
