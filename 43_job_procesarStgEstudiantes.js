@@ -259,15 +259,55 @@ function procesarStgMatriculas(options) {
     Logger.log("\nOK procesarStgMatriculas completado");
     Logger.log("   " + logMsg);
 
-    // Notificar estudiantes recién matriculados
+    // Notificar estudiantes recien matriculados — filtrado por ventana/momento del lote
     if (res.invitacionesOk > 0 && !skipNotify) {
-      Logger.log("\n-- Notificando estudiantes (" + res.invitacionesOk + " matriculas nuevas) --");
-      try {
-        notificarEstudiantes();
-      } catch (eNotif) {
-        Logger.log("  Aviso: notificarEstudiantes fallo: " + eNotif.message);
-        registrarStgEstudiantesLog({ stageEntityType: "MATRICULA", stageRecordId: "BATCH",
-          action: "NOTIFY", result: "ERROR", message: eNotif.message });
+      // Extraer combinaciones unicas (windowCohortCode, momentCode) de las filas PROMOTED.
+      // Esto evita arrastrar matriculas viejas ACTIVE de otras ventanas al enviar el correo.
+      // Ref: DEC-2026-015 — Separacion de cierre academico vs administrativo.
+      var combos = {};
+      rows.forEach(function(row) {
+        var stage = String(row[mem.idx["StageStatus"]] || "").trim();
+        if (stage !== "PROMOTED") return;
+        var win = String(row[mem.idx["CohortCode"]]  || "").trim().toUpperCase();
+        var mom = String(row[mem.idx["MomentCode"]]  || "").trim().toUpperCase();
+        if (!win || !mom) return;
+        combos[win + "|" + mom] = { windowCohortCode: win, momentCode: mom };
+      });
+      var listaCombos = Object.keys(combos).map(function(k) { return combos[k]; });
+
+      Logger.log("\n-- Notificando " + listaCombos.length + " combinacion(es) de ventana/momento --");
+      listaCombos.forEach(function(combo) {
+        Logger.log("   Notificando ventana=" + combo.windowCohortCode +
+                   " momento=" + combo.momentCode);
+        try {
+          notificarEstudiantes({
+            windowCohortCode: combo.windowCohortCode,
+            momentCode      : combo.momentCode
+          });
+          registrarStgEstudiantesLog({
+            stageEntityType: "MATRICULA",
+            stageRecordId  : "BATCH",
+            action         : "NOTIFY",
+            result         : "SUCCESS",
+            message        : "Notificacion enviada para ventana=" + combo.windowCohortCode +
+                             " momento=" + combo.momentCode
+          });
+        } catch (eNotif) {
+          Logger.log("   Aviso: notificarEstudiantes(" + combo.windowCohortCode + "/" +
+                     combo.momentCode + ") fallo: " + eNotif.message);
+          registrarStgEstudiantesLog({
+            stageEntityType: "MATRICULA",
+            stageRecordId  : "BATCH",
+            action         : "NOTIFY",
+            result         : "ERROR",
+            message        : "Fallo notificacion " + combo.windowCohortCode + "/" +
+                             combo.momentCode + ": " + eNotif.message
+          });
+        }
+      });
+
+      if (listaCombos.length === 0) {
+        Logger.log("\n-- Sin combinaciones ventana/momento en el lote — notificacion omitida. --");
       }
     } else if (res.invitacionesOk > 0 && skipNotify) {
       Logger.log("\n-- skipNotify=true: notificacion omitida. Enviar manualmente desde el menu. --");

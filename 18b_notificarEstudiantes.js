@@ -2,7 +2,7 @@
  * ============================================================
  * SIDEP ECOSISTEMA DIGITAL — Proyecto Google Apps Script
  * Archivo: 18b_notificarEstudiantes.gs
- * Versión: 1.0.0
+ * Versión: 1.1.0
  * ============================================================
  *
  * RESPONSABILIDAD ÚNICA:
@@ -31,9 +31,17 @@
  *   _CFG_SUBJECTS      → SubjectName (nombre completo de la asignatura)
  *
  * FUNCIONES PÚBLICAS:
- *   notificarEstudiantes()                 → envía a estudiantes con matrículas ACTIVE
+ *   notificarEstudiantes(opts)             → envía a estudiantes con matrículas ACTIVE
  *   notificarEstudiantes({ dryRun:true })  → preview en Logger sin enviar
  *   notificarEstudiante_individual(email)  → reenvío a un estudiante específico
+ *
+ * CHANGELOG v1.1.0 (2026-05-18):
+ *   - NUEVO: parametros opcionales opts.windowCohortCode, opts.momentCode y opts.enrollmentIds
+ *     para filtrar el alcance del envio. Sin estos parametros, comportamiento identico a v1.0.0.
+ *   - FIX: el header del correo acumula TODAS las ventanas del estudiante cuando no hay filtro,
+ *     en lugar de tomar solo la primera que aparece en la iteracion (bug de cohorte cruzado).
+ *   - Defensa en profundidad para transiciones entre cohortes (MR26→MY26, etc.).
+ *   - Ref: DEC-2026-015 — Separacion de cierre academico vs administrativo.
  * ============================================================
  */
 
@@ -54,26 +62,44 @@ var DIAS_LABEL_EST = {
 // ── Función principal ─────────────────────────────────────────
 
 /**
- * Envía email a cada estudiante con matrículas ACTIVE informando
+ * Envia email a cada estudiante con matriculas ACTIVE informando
  * su programa, cohorte, asignaturas, horarios, docentes y links.
  *
+ * Sin argumentos (o con argumentos previos de v1.0.0): comportamiento identico a v1.0.0.
+ * Los filtros opcionales de v1.1.0 son estrictamente aditivos — no quitan funcionalidad.
+ *
  * @param {object}  [opts]
- * @param {boolean} [opts.dryRun]    — preview sin enviar
- * @param {string}  [opts.soloEmail] — enviar solo a este estudiante
+ * @param {boolean} [opts.dryRun]          — preview sin enviar
+ * @param {string}  [opts.soloEmail]       — enviar solo a este estudiante
+ * @param {string}  [opts.windowCohortCode]— filtrar solo matriculas de esta ventana (ej. 'MR26')
+ * @param {string}  [opts.momentCode]      — filtrar solo matriculas de este momento (ej. 'C1M2')
+ * @param {Array}   [opts.enrollmentIds]   — filtrar solo estos EnrollmentIDs especificos
  */
 function notificarEstudiantes(opts) {
-  var options   = opts || {};
-  var dryRun    = options.dryRun    === true;
-  var soloEmail = options.soloEmail ? options.soloEmail.toLowerCase().trim() : null;
-  var ahora     = nowSIDEP();
-  var ejecutor  = Session.getEffectiveUser().getEmail();
-  var inicio    = Date.now();
-  var conteo    = { enviados: 0, omitidos: 0, errores: 0, sinAulas: 0 };
+  var options          = opts || {};
+  var dryRun           = options.dryRun    === true;
+  var soloEmail        = options.soloEmail ? options.soloEmail.toLowerCase().trim() : null;
+  var windowCohortCode = options.windowCohortCode
+    ? String(options.windowCohortCode).trim().toUpperCase() : null;
+  var momentCode       = options.momentCode
+    ? String(options.momentCode).trim().toUpperCase() : null;
+  var enrollmentIds    = Array.isArray(options.enrollmentIds)
+    ? options.enrollmentIds.map(function(x) { return String(x).trim(); }) : null;
+  var enrollmentIdsSet = enrollmentIds
+    ? enrollmentIds.reduce(function(acc, id) { acc[id] = true; return acc; }, {}) : null;
+
+  var ahora    = nowSIDEP();
+  var ejecutor = Session.getEffectiveUser().getEmail();
+  var inicio   = Date.now();
+  var conteo   = { enviados: 0, omitidos: 0, errores: 0, sinAulas: 0 };
 
   Logger.log("════════════════════════════════════════════════");
-  Logger.log("SIDEP — notificarEstudiantes v1.0" + (dryRun ? " [DRY RUN]" : ""));
+  Logger.log("SIDEP — notificarEstudiantes v1.1" + (dryRun ? " [DRY RUN]" : ""));
   Logger.log("   Ejecutor : " + ejecutor);
-  if (soloEmail) Logger.log("   Filtro   : " + soloEmail);
+  if (soloEmail)        Logger.log("   Filtro email  : " + soloEmail);
+  if (windowCohortCode) Logger.log("   Filtro ventana: " + windowCohortCode);
+  if (momentCode)       Logger.log("   Filtro momento: " + momentCode);
+  if (enrollmentIds)    Logger.log("   Filtro IDs    : " + enrollmentIds.length + " enrollment(s)");
   Logger.log("════════════════════════════════════════════════");
 
   var adminSS, logResult = "ERROR", logMsg = "";
@@ -114,10 +140,16 @@ function notificarEstudiantes(opts) {
     Logger.log("  enrollmentCodes obtenidos: " + Object.keys(enrollCodes).length);
 
     // ── PASO 4: Agrupar matrículas por estudiante ─────────────
+    var filtros = {
+      windowCohortCode : windowCohortCode,
+      momentCode       : momentCode,
+      enrollmentIdsSet : enrollmentIdsSet
+    };
     var porEstudiante = _agruparPorEstudiante_(memEnr, stuIdx, deplIdx, asigIdx,
-                                               progIdx, subjIdx, enrollCodes);
-    Logger.log("  Estudiantes con matriculas ACTIVE: " +
-               Object.keys(porEstudiante).length);
+                                               progIdx, subjIdx, enrollCodes, filtros);
+    Logger.log("  Estudiantes con matriculas ACTIVE" +
+               (windowCohortCode ? " (ventana " + windowCohortCode + ")" : "") +
+               ": " + Object.keys(porEstudiante).length);
 
     // ── PASO 5: Enviar emails ─────────────────────────────────
     Logger.log("\n-- " + (dryRun ? "Preview (DRY RUN)" : "Enviando emails") + " --");
@@ -135,11 +167,13 @@ function notificarEstudiantes(opts) {
 
       var cuerpo = _construirEmailEstudiante_(info);
 
+      var ventanasStr = Object.keys(info.windowCohortCodes || {}).sort().join(", ");
+
       if (dryRun) {
         Logger.log("\n  [DRY RUN] Para: " + email);
         Logger.log("     Nombre   : " + info.firstName + " " + info.lastName);
         Logger.log("     Programa : " + info.programName + " (" + info.programCode + ")");
-        Logger.log("     Cohorte  : " + info.entryCohortCode + " (ventana: " + info.windowCohortCode + ")");
+        Logger.log("     Cohorte  : " + info.entryCohortCode + " (ventana(s): " + ventanasStr + ")");
         Logger.log("     Aulas    : " + info.aulas.length);
         info.aulas.forEach(function(a) {
           Logger.log("       · " + a.subjectName + " | " + a.teacherName +
@@ -369,21 +403,41 @@ function _obtenerEnrollmentCodes_(classroomIds, dryRun) {
 }
 
 /**
- * Agrupa matrículas ACTIVE por email de estudiante.
+ * Agrupa matriculas ACTIVE por email de estudiante, con filtros opcionales.
+ *
+ * @param {object} memEnr    — resultado de _leerHojaNotifEst_(adminSS, 'Enrollments')
+ * @param {object} stuIdx    — studentId → datos del estudiante
+ * @param {object} deplIdx   — deploymentId → datos del deployment
+ * @param {object} asigIdx   — deploymentId → datos de asignacion docente
+ * @param {object} progIdx   — programCode → nombre del programa
+ * @param {object} subjIdx   — subjectCode → nombre de la asignatura
+ * @param {object} enrollCodes — classroomId → enrollmentCode
+ * @param {object} [filtros] — { windowCohortCode, momentCode, enrollmentIdsSet }
+ *   Todos los campos de filtros son opcionales. Sin filtros: comportamiento identico a v1.0.0.
  * @returns {{ email → { firstName, lastName, programCode, programName,
- *                        entryCohortCode, windowCohortCode,
+ *                        entryCohortCode, windowCohortCodes: {code: true},
  *                        aulas: [{subjectCode, subjectName, teacherName,
  *                                 dayOfWeek, startTime, endTime, weeklyHours,
  *                                 classroomId, enrollLink, nombre}] } }}
  */
 function _agruparPorEstudiante_(memEnr, stuIdx, deplIdx, asigIdx,
-                                 progIdx, subjIdx, enrollCodes) {
+                                 progIdx, subjIdx, enrollCodes, filtros) {
   var grupos = {};
   var c      = memEnr.colIdx;
+  var f_     = filtros || {};
 
   memEnr.datos.forEach(function(f) {
-    var status  = String(f[c["EnrollmentStatusCode"]] || "").trim();
+    var status = String(f[c["EnrollmentStatusCode"]] || "").trim();
     if (status !== "ACTIVE") return;
+
+    // Filtros de defensa en profundidad (v1.1.0 — DEC-2026-015)
+    var enrollId = String(f[c["EnrollmentID"]]     || "").trim();
+    var winCoh   = String(f[c["WindowCohortCode"]] || "").trim().toUpperCase();
+    var mom      = String(f[c["MomentCode"]]       || "").trim().toUpperCase();
+
+    if (f_.enrollmentIdsSet && !f_.enrollmentIdsSet[enrollId]) return;
+    if (f_.windowCohortCode && winCoh !== f_.windowCohortCode) return;
+    if (f_.momentCode       && mom    !== f_.momentCode)       return;
 
     var stuId  = String(f[c["StudentID"]]    || "").trim();
     var deplId = String(f[c["DeploymentID"]] || "").trim();
@@ -392,25 +446,28 @@ function _agruparPorEstudiante_(memEnr, stuIdx, deplIdx, asigIdx,
 
     if (!stu || !stu.email || !depl || !depl.classroomId) return;
 
-    var asig        = asigIdx[deplId] || { teacherName: "", dayOfWeek: "",
-                                            startTime: "", endTime: "", weeklyHours: 0 };
-    var enrollCode  = enrollCodes[depl.classroomId] || "";
-    var enrollLink  = enrollCode
+    var asig       = asigIdx[deplId] || { teacherName: "", dayOfWeek: "",
+                                          startTime: "", endTime: "", weeklyHours: 0 };
+    var enrollCode = enrollCodes[depl.classroomId] || "";
+    var enrollLink = enrollCode
       ? "https://classroom.google.com/c/" + depl.classroomId + "?cjc=" + enrollCode
       : "https://classroom.google.com/c/" + depl.classroomId;
 
     if (!grupos[stu.email]) {
-      var windowCoh = String(f[c["WindowCohortCode"]] || depl.windowCohortCode || "").trim();
       grupos[stu.email] = {
-        firstName       : stu.firstName,
-        lastName        : stu.lastName,
-        programCode     : stu.programCode,
-        programName     : progIdx[stu.programCode] || stu.programCode,
-        entryCohortCode : stu.cohortCode,
-        windowCohortCode: windowCoh,
-        aulas           : []
+        firstName        : stu.firstName,
+        lastName         : stu.lastName,
+        programCode      : stu.programCode,
+        programName      : progIdx[stu.programCode] || stu.programCode,
+        entryCohortCode  : stu.cohortCode,
+        windowCohortCodes: {},   // acumula todas las ventanas: { 'MR26': true, 'MY26': true }
+        aulas            : []
       };
     }
+
+    // Acumular ventana en el set del estudiante (fix bug windowCohortCode arbitrario)
+    var winValue = winCoh || (depl.windowCohortCode ? String(depl.windowCohortCode).trim().toUpperCase() : "");
+    if (winValue) grupos[stu.email].windowCohortCodes[winValue] = true;
 
     grupos[stu.email].aulas.push({
       subjectCode  : depl.subjectCode,
@@ -545,7 +602,7 @@ function _construirEmailEstudiante_(info) {
         '<tr>' +
           '<td style="font-size:13px;color:#555;padding:3px 0;">' +
             '<strong style="color:#1a3c5e;">Ventana activa:</strong>&nbsp;&nbsp;' +
-            info.windowCohortCode +
+            Object.keys(info.windowCohortCodes || {}).sort().join(", ") +
           '</td>' +
         '</tr>' +
         '<tr>' +
