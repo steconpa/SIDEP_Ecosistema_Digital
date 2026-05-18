@@ -2,13 +2,13 @@
  * ============================================================
  * SIDEP ECOSISTEMA DIGITAL — Proyecto Google Apps Script
  * Archivo: 53_menu_staging_estudiantes.gs
- * Versión: 1.0.0
+ * Versión: 1.1.0
  * ============================================================
  *
  * RESPONSABILIDAD ÚNICA:
- *   Menú y trigger onOpen para SIDEP_STG_ESTUDIANTES.
+ *   Menu y trigger onOpen para SIDEP_STG_ESTUDIANTES.
  *
- * MENÚ (en orden de ejecución):
+ * MENÚ (en orden de ejecucion):
  *
  *   — PREPARACION —
  *   ├── Actualizar listados (dropdowns)
@@ -20,10 +20,18 @@
  *   — MATRICULAS A AULAS —
  *   ├── Validar matriculas (sin escribir)
  *   ├── Procesar matriculas a aulas
+ *   ├── Procesar matriculas (sin notificar)
  *
  *   — NOTIFICACIONES —
  *   ├── Notificar estudiantes (preview)
- *   ├── Notificar estudiantes (enviar)
+ *   ├── Notificar estudiantes — TODAS las ventanas ACTIVE
+ *   ├── Notificar estudiantes por ventana...   [v1.1.0]
+ *   ├── Notificar ultimo lote procesado        [v1.1.0]
+ *
+ *   — CIERRE DE COHORTE —                     [v1.1.0]
+ *   ├── Diagnostico de cierre por ventana...
+ *   ├── Cerrar cohorte para estudiantes...
+ *   └── Reabrir cohorte academico (rollback)...
  *
  *   — DIAGNOSTICO —
  *   ├── Ver estado de matriculas (staging)
@@ -33,6 +41,16 @@
  *   43_job_procesarStgEstudiantes.gs → procesarStgEstudiantes(), procesarStgMatriculas()
  *   24c_repo_staging_estudiantes.gs  → leerStgEstudiantes(), leerStgMatriculas()
  *   18b_notificarEstudiantes.gs      → notificarEstudiantes()
+ *   54_cerrarCohorteAcademico.gs     → cerrarCohorteAcademico(), reabrirCohorteAcademico(),
+ *                                      diagnosticoCierreCohorte()
+ *
+ * CHANGELOG v1.1.0 (2026-05-18):
+ *   - Renombrado item 'Notificar estudiantes (enviar)' a '...TODAS las ventanas ACTIVE'
+ *     para hacer explicito que esa opcion no filtra por ventana.
+ *   - NUEVO: 'Notificar estudiantes por ventana...' — filtra por windowCohortCode/momentCode.
+ *   - NUEVO: 'Notificar ultimo lote procesado' — reenvio de las ventanas del ultimo lote.
+ *   - NUEVO bloque CIERRE DE COHORTE con 3 opciones.
+ *   - Ref: DEC-2026-015 — Separacion de cierre academico vs administrativo.
  * ============================================================
  */
 
@@ -59,13 +77,21 @@ function stagingEstudiantesOnOpen(e) {
     .addSeparator()
 
     // — NOTIFICACIONES —
-    .addItem("Notificar estudiantes (preview)",           "menuNotificarEstudiantes_dryRun_")
-    .addItem("Notificar estudiantes (enviar)",            "menuNotificarEstudiantes_")
+    .addItem("Notificar estudiantes (preview)",                    "menuNotificarEstudiantes_dryRun_")
+    .addItem("Notificar estudiantes — TODAS las ventanas ACTIVE",  "menuNotificarEstudiantes_")
+    .addItem("Notificar estudiantes por ventana...",               "menuNotificarEstudiantesPorVentana_")
+    .addItem("Notificar ultimo lote procesado",                    "menuNotificarUltimoLote_")
+    .addSeparator()
+
+    // — CIERRE DE COHORTE —
+    .addItem("Diagnostico de cierre por ventana...",               "menuDiagnosticoCierre_")
+    .addItem("Cerrar cohorte para estudiantes...",                 "menuCerrarCohorteAcademico_")
+    .addItem("Reabrir cohorte academico (rollback)...",            "menuReabrirCohorteAcademico_")
     .addSeparator()
 
     // — DIAGNOSTICO —
-    .addItem("Ver estado de matriculas (staging)",        "menuVerMatriculas_")
-    .addItem("Diagnostico completo",                      "menuDiagnosticoStagingEst_")
+    .addItem("Ver estado de matriculas (staging)",                 "menuVerMatriculas_")
+    .addItem("Diagnostico completo",                               "menuDiagnosticoStagingEst_")
 
     .addToUi();
 }
@@ -264,6 +290,223 @@ function menuNotificarEstudiantes_() {
   try {
     notificarEstudiantes();
     ui.alert("Notificaciones enviadas.\nRevisa el Logger para el detalle.", ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert("Error:\n" + e.message);
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════
+// NOTIFICACIONES FILTRADAS (v1.1.0)
+// ════════════════════════════════════════════════════════════
+
+function menuNotificarEstudiantesPorVentana_() {
+  var ui = SpreadsheetApp.getUi();
+
+  var respWin = ui.prompt(
+    "Notificar por ventana",
+    "Codigo de ventana (ej. MR26, MY26):",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (respWin.getSelectedButton() !== ui.Button.OK) return;
+  var win = respWin.getResponseText().trim().toUpperCase();
+  if (!win) { ui.alert("Ventana vacia — operacion cancelada."); return; }
+
+  var respMom = ui.prompt(
+    "Notificar por ventana",
+    "Codigo de momento (ej. C1M2, A1B1) — opcional, vacio = todos:",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (respMom.getSelectedButton() !== ui.Button.OK) return;
+  var mom = respMom.getResponseText().trim().toUpperCase();
+
+  var conf = ui.alert(
+    "Confirmar",
+    "Enviar correo a estudiantes con matriculas ACTIVE en ventana " + win +
+    (mom ? " / momento " + mom : " (todos los momentos)") + "?",
+    ui.ButtonSet.YES_NO
+  );
+  if (conf !== ui.Button.YES) return;
+
+  try {
+    var opts = { windowCohortCode: win };
+    if (mom) opts.momentCode = mom;
+    notificarEstudiantes(opts);
+    ui.alert("Notificaciones enviadas. Revisa el Logger para el detalle.");
+  } catch (e) {
+    ui.alert("Error:\n" + e.message);
+  }
+}
+
+
+function menuNotificarUltimoLote_() {
+  var ui = SpreadsheetApp.getUi();
+
+  // Lee STG_MATRICULAS y busca filas PROMOTED en los ultimos 60 minutos
+  var mem;
+  try {
+    mem = leerStgMatriculas();
+  } catch (e) {
+    ui.alert("Error al leer STG_MATRICULAS:\n" + e.message);
+    return;
+  }
+
+  var iStage  = mem.idx["StageStatus"];
+  var iProcAt = mem.idx["ProcessedAt"];
+  var iWin    = mem.idx["CohortCode"];
+  var iMom    = mem.idx["MomentCode"];
+
+  var ahora  = new Date();
+  var combos = {};
+
+  mem.datos.forEach(function(row) {
+    if (String(row[iStage] || "").trim() !== "PROMOTED") return;
+    var procAt = row[iProcAt];
+    if (typeof procAt === "string") {
+      try { procAt = new Date(procAt); } catch (e) { return; }
+    }
+    if (!(procAt instanceof Date) || isNaN(procAt.getTime())) return;
+    if ((ahora - procAt) > 60 * 60 * 1000) return;
+    var win = String(row[iWin] || "").trim().toUpperCase();
+    var mom = String(row[iMom] || "").trim().toUpperCase();
+    if (!win || !mom) return;
+    combos[win + "|" + mom] = { windowCohortCode: win, momentCode: mom };
+  });
+
+  var lista = Object.keys(combos).map(function(k) { return combos[k]; });
+
+  if (lista.length === 0) {
+    ui.alert("No se encontro lote procesado en los ultimos 60 minutos.");
+    return;
+  }
+
+  var resumen = lista.map(function(c) {
+    return c.windowCohortCode + "/" + c.momentCode;
+  }).join(", ");
+
+  var conf = ui.alert(
+    "Confirmar",
+    "Re-enviar notificacion para combos: " + resumen + "?",
+    ui.ButtonSet.YES_NO
+  );
+  if (conf !== ui.Button.YES) return;
+
+  lista.forEach(function(c) {
+    try {
+      notificarEstudiantes({
+        windowCohortCode: c.windowCohortCode,
+        momentCode      : c.momentCode
+      });
+    } catch (e) {
+      Logger.log("Error en combo " + c.windowCohortCode + "/" +
+                 c.momentCode + ": " + e.message);
+    }
+  });
+
+  ui.alert("Re-envio completado. Revisa el Logger para el detalle.");
+}
+
+
+// ════════════════════════════════════════════════════════════
+// CIERRE DE COHORTE (v1.1.0)
+// ════════════════════════════════════════════════════════════
+
+function menuDiagnosticoCierre_() {
+  var ui = SpreadsheetApp.getUi();
+
+  var resp = ui.prompt(
+    "Diagnostico de cierre",
+    "Codigo de ventana (ej. MR26):",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+  var win = resp.getResponseText().trim().toUpperCase();
+  if (!win) return;
+
+  try {
+    diagnosticoCierreCohorte(win);
+    ui.alert("Diagnostico completado. Revisa el Logger (Extensiones -> Apps Script -> Registros).");
+  } catch (e) {
+    ui.alert("Error:\n" + e.message);
+  }
+}
+
+
+function menuCerrarCohorteAcademico_() {
+  var ui = SpreadsheetApp.getUi();
+
+  var respWin = ui.prompt(
+    "Cerrar cohorte academico",
+    "Codigo de ventana a cerrar (ej. MR26):",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (respWin.getSelectedButton() !== ui.Button.OK) return;
+  var win = respWin.getResponseText().trim().toUpperCase();
+  if (!win) return;
+
+  var respMom = ui.prompt(
+    "Cerrar cohorte academico",
+    "Codigo de momento (opcional, vacio = todos los momentos):",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (respMom.getSelectedButton() !== ui.Button.OK) return;
+  var mom = respMom.getResponseText().trim().toUpperCase();
+
+  // DRY-RUN OBLIGATORIO primero — el coordinador debe ver el preview antes del cierre real
+  try {
+    cerrarCohorteAcademico(win, { dryRun: true, momentCode: mom || null });
+  } catch (e) {
+    ui.alert("Error en dry-run:\n" + e.message);
+    return;
+  }
+
+  var conf = ui.alert(
+    "Confirmar cierre academico",
+    "Se ejecuto el DRY-RUN. Revisa el Logger para ver las matriculas afectadas.\n\n" +
+    "Proceder con el cierre REAL de ventana " + win +
+    (mom ? " / momento " + mom : " (todos los momentos)") + "?\n\n" +
+    "Accion: ACTIVE → IN_GRADING\n" +
+    "Reversible: usa 'Reabrir cohorte academico' si necesitas deshacer.",
+    ui.ButtonSet.YES_NO
+  );
+  if (conf !== ui.Button.YES) return;
+
+  try {
+    cerrarCohorteAcademico(win, { momentCode: mom || null });
+    ui.alert(
+      "Cierre academico completado.\n" +
+      "Revisa el Logger y STG_ESTUDIANTES_LOG para el detalle.\n\n" +
+      "Las aulas Classroom siguen abiertas para que los docentes carguen notas."
+    );
+  } catch (e) {
+    ui.alert("Error:\n" + e.message);
+  }
+}
+
+
+function menuReabrirCohorteAcademico_() {
+  var ui = SpreadsheetApp.getUi();
+
+  var respWin = ui.prompt(
+    "Reabrir cohorte academico (rollback)",
+    "Codigo de ventana a reabrir (ej. MR26):",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (respWin.getSelectedButton() !== ui.Button.OK) return;
+  var win = respWin.getResponseText().trim().toUpperCase();
+  if (!win) return;
+
+  var conf = ui.alert(
+    "Confirmar rollback",
+    "Reabrir matriculas IN_GRADING → ACTIVE para ventana " + win + "?\n\n" +
+    "Esta accion revierte el cierre academico. Usa solo si el cierre fue un error.",
+    ui.ButtonSet.YES_NO
+  );
+  if (conf !== ui.Button.YES) return;
+
+  try {
+    reabrirCohorteAcademico(win);
+    ui.alert("Rollback completado. Revisa el Logger para el detalle.");
   } catch (e) {
     ui.alert("Error:\n" + e.message);
   }

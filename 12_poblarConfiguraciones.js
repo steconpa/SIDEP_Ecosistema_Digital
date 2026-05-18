@@ -558,7 +558,11 @@ function poblarStatuses_(ss, ahora, ejecutor) {
     ["sts_RED",  "RED",              "Riesgo alto",              "RISK",            3,true,ahora,ejecutor,"",""],
     // ── ENROLLMENT — estado de matrícula ──────────────────────
     ["sts_ACT",  "ACTIVE",           "Activo",                   "ENROLLMENT",      1,true,ahora,ejecutor,"",""],
-    ["sts_DRP",  "DROPPED",          "Retirado",                 "ENROLLMENT",      2,true,ahora,ejecutor,"",""],
+    // IN_GRADING: estudiante termino clases, docente pendiente de cargar nota final.
+    // Aula Classroom sigue activa. Estado intermedio entre ACTIVE y COMPLETED/FAILED.
+    // Ref: DEC-2026-015 — Separacion de cierre academico vs administrativo.
+    ["sts_INGR", "IN_GRADING",       "En calificacion",          "ENROLLMENT",      2,true,ahora,ejecutor,"",""],
+    ["sts_DRP",  "DROPPED",          "Retirado",                 "ENROLLMENT",      3,true,ahora,ejecutor,"",""],
     ["sts_CMP",  "COMPLETED",        "Completado",               "ENROLLMENT",      3,true,ahora,ejecutor,"",""],
     ["sts_GRAD", "GRADUATED",        "Graduado",                 "ENROLLMENT",      4,true,ahora,ejecutor,"",""],
     ["sts_With", "WITHDRAWN",        "Retirado voluntario",      "ENROLLMENT",      5,true,ahora,ejecutor,"",""],
@@ -627,7 +631,104 @@ function poblarStatuses_(ss, ahora, ejecutor) {
     ["sts_INVA", "TEACHER_ACCEPTED", "Invitación aceptada",      "INVITATION",      2,true,ahora,ejecutor,"",""],
     ["sts_INVD", "TEACHER_DECLINED", "Invitación rechazada",     "INVITATION",      3,true,ahora,ejecutor,"",""]
   ]);
-  Logger.log("    📊 _CFG_STATUSES → 45 estados en 14 tipos (INVITATION añadido v4.1.0)");
+  Logger.log("    📊 _CFG_STATUSES → 46 estados en 14 tipos (IN_GRADING añadido v2.2.0, DEC-2026-015)");
+}
+
+
+/**
+ * Agrega el estado IN_GRADING a _CFG_STATUSES de forma idempotente.
+ *
+ * Proposito: UPSERT quirurgico para instalaciones que ya tienen _CFG_STATUSES
+ * poblada (modo SAFE de poblarConfiguraciones ya no la toca). Agrega IN_GRADING
+ * solo si no existe. Re-ejecutable sin efectos secundarios.
+ *
+ * Uso:
+ *   registrarEstadoInGrading()  — agrega si falta
+ *   registrarEstadoInGrading({ force: true })  — reescribe aunque exista
+ *
+ * @param {object}  [options]
+ * @param {boolean} [options.force=false] — reescribe el registro aunque ya exista
+ *
+ * Efectos secundarios:
+ *   Escribe UNA fila en _CFG_STATUSES de SIDEP_01_CORE_ACADEMICO.
+ *   Cuota: 1 lectura + condicional 1 escritura en Sheets API.
+ */
+function registrarEstadoInGrading(options) {
+  var opts     = options || {};
+  var force    = opts.force === true;
+  var ahora    = nowSIDEP();
+  var ejecutor = Session.getEffectiveUser().getEmail();
+
+  Logger.log("════════════════════════════════════════════════");
+  Logger.log("SIDEP — registrarEstadoInGrading v2.2.0");
+  Logger.log("   Ejecutor: " + ejecutor);
+  Logger.log("   Modo    : " + (force ? "FORCE" : "SAFE"));
+  Logger.log("════════════════════════════════════════════════");
+
+  try {
+    var coreSS = getSpreadsheetByName("core");
+    var hoja   = coreSS.getSheetByName("_CFG_STATUSES");
+
+    if (!hoja) {
+      Logger.log("ERROR: Hoja _CFG_STATUSES no encontrada. Ejecutar setupSidepTables() primero.");
+      return;
+    }
+
+    var mem  = _leerHoja_(hoja);
+    var iCode = mem.idx["StatusCode"];
+
+    if (iCode === undefined) {
+      Logger.log("ERROR: Columna StatusCode no encontrada en _CFG_STATUSES.");
+      return;
+    }
+
+    var yaExiste = mem.datos.some(function(row) {
+      return String(row[iCode] || "").trim() === "IN_GRADING";
+    });
+
+    if (yaExiste && !force) {
+      Logger.log("   IN_GRADING ya existe en _CFG_STATUSES — sin cambios.");
+      Logger.log("   Usa registrarEstadoInGrading({ force: true }) para reescribir.");
+      return;
+    }
+
+    if (yaExiste && force) {
+      mem.datos = mem.datos.filter(function(row) {
+        return String(row[iCode] || "").trim() !== "IN_GRADING";
+      });
+      Logger.log("   Registro IN_GRADING existente eliminado para reescritura.");
+    }
+
+    var totalCols = mem.encabezado.length;
+    var nuevaFila = new Array(totalCols).fill("");
+
+    var setCol = function(nombre, valor) {
+      var idx = mem.idx[nombre];
+      if (idx !== undefined) nuevaFila[idx] = valor;
+    };
+
+    setCol("StatusID",       "sts_INGR");
+    setCol("StatusCode",     "IN_GRADING");
+    setCol("StatusLabel",    "En calificacion");
+    setCol("StatusType",     "ENROLLMENT");
+    setCol("SortOrder",      2);
+    setCol("IsActive",       true);
+    setCol("CreatedAt",      ahora);
+    setCol("CreatedBy",      ejecutor);
+    setCol("Description",    "Estudiante termino clases, pendiente nota final del docente. " +
+                              "Aula Classroom sigue activa para que el docente cargue notas. " +
+                              "Estado intermedio entre ACTIVE y COMPLETED/FAILED. DEC-2026-015.");
+
+    mem.datos.push(nuevaFila);
+    _escribirEnBatch_(hoja, mem);
+
+    Logger.log("   OK IN_GRADING agregado a _CFG_STATUSES.");
+    Logger.log("════════════════════════════════════════════════");
+
+  } catch (e) {
+    Logger.log("ERROR en registrarEstadoInGrading: " + e.message);
+    throw e;
+  }
 }
 
 function poblarSubjects_(ss, ahora, ejecutor) {
