@@ -823,7 +823,17 @@ function _calcularNotaFinalClassroom_(cwCalificables, studentSubs, calculationTy
       if (rawGrade == null) return; // sin entrega calificada — Classroom tampoco la cuenta
 
       var notaNorm = _normalizarNota_(rawGrade, cw.maxPoints);
-      if (notaNorm == null) return;
+      // _normalizarNota_ devuelve null si la nota está fuera del rango [ESCALA_MIN, ESCALA_MAX].
+      // Para maxPoints≤5 (escala directa del docente), una nota=0 es "fuera de escala" porque
+      // el mínimo es ESCALA_MIN=1.0. Sin embargo, el docente puede dar 0 intencionalmente
+      // (entrega incompleta, no presentó, etc.) → lo mapeamos a ESCALA_MIN (INSUFICIENTE).
+      if (notaNorm == null) {
+        if (rawGrade === 0) {
+          notaNorm = CFG_SEMAFORO.ESCALA_MIN; // 0 → 1.0 INSUFICIENTE
+        } else {
+          return; // otro valor fuera de rango — omitir
+        }
+      }
 
       var maxPts = Number(cw.maxPoints);
       sumPond += notaNorm * maxPts;
@@ -846,7 +856,14 @@ function _calcularNotaFinalClassroom_(cwCalificables, studentSubs, calculationTy
       if (!catId || !catById[catId]) return; // sin categoría → excluir (Classroom las omite)
 
       var notaNorm = _normalizarNota_(rawGrade, cw.maxPoints);
-      if (notaNorm == null) return;
+      // Mismo manejo que TOTAL_POINTS: nota=0 con maxPoints≤5 → ESCALA_MIN
+      if (notaNorm == null) {
+        if (rawGrade === 0) {
+          notaNorm = CFG_SEMAFORO.ESCALA_MIN;
+        } else {
+          return;
+        }
+      }
 
       if (!porCategoria[catId]) {
         porCategoria[catId] = { sumPeso: 0, sumPond: 0, weight: catById[catId].weight || 0 };
@@ -1047,7 +1064,20 @@ function _ascenderNotasDeClassroom_(aulasCreated, cohortCode, momentCode, progra
       return;
     }
 
-    Logger.log("  → " + nomenc + " (" + calculationType + ") | " +
+    // Fix WEIGHTED_CATEGORIES sin categorías asignadas:
+    // Si el aula usa WEIGHTED_CATEGORIES pero ninguna actividad tiene gradeCategoryId,
+    // Classroom no puede calcular el Overall Grade (muestra vacío).
+    // Hacemos fallback a TOTAL_POINTS para dar una nota basada en todas las actividades.
+    var tipoEfectivo = calculationType;
+    if (calculationType === "WEIGHTED_CATEGORIES") {
+      var conCategoria = cwCalificables.filter(function(cw) { return cw.gradeCategoryId; });
+      if (conCategoria.length === 0) {
+        tipoEfectivo = "TOTAL_POINTS";
+        Logger.log("  ℹ️  " + nomenc + ": WEIGHTED_CATEGORIES sin categorías → fallback TOTAL_POINTS");
+      }
+    }
+
+    Logger.log("  → " + nomenc + " (" + tipoEfectivo + ") | " +
       cwCalificables.length + " actividades | " + estudiantes.length + " estudiantes");
 
     // Acumular filas nuevas para batch insert al final del aula (minimiza llamadas a Sheets)
@@ -1097,7 +1127,7 @@ function _ascenderNotasDeClassroom_(aulasCreated, cohortCode, momentCode, progra
 
       // 3c. Calcular Nota Final (Overall Grade en escala 1–5)
       var notaFinal = _calcularNotaFinalClassroom_(
-        cwCalificables, studentSubs, calculationType, catById
+        cwCalificables, studentSubs, tipoEfectivo, catById
       );
 
       if (notaFinal == null) {
