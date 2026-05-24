@@ -617,14 +617,18 @@ function menuEjecutarCierreVentana() {
 /**
  * PASO 1 — Gate de entregas.
  * Verifica dos condiciones para que la auto-promoción de notas sea posible:
- *   1. No hay submissions TURNED_IN — el docente retornó todas las entregas.
- *   2. No hay submissions RETURNED sin assignedGrade — el docente calificó todo lo que retornó.
+ *   1. No hay submissions TURNED_IN no excused — el docente retornó todas las entregas.
+ *   2. No hay submissions RETURNED sin assignedGrade no excused — el docente calificó todo.
  * Solo evalúa CourseWork PUBLISHED con maxPoints > 0.
+ *
+ * EXCUSED: la API de Classroom devuelve sub.excused===true para entregas dispensadas.
+ *   El docente las marca como "excused" en el gradebook; no bloquean el cierre y
+ *   Classroom tampoco las incluye en el cálculo del Overall Grade.
  *
  * @param {Array} aulasCreated — filas de MasterDeployments (CREATED de la ventana)
  * @returns {{ ok: boolean, sinRetornar: Array, sinCalificar: Array, totalCw: number, totalSubs: number, apiErrores: number }}
- *   sinRetornar: actividades con entregas en TURNED_IN (docente no retornó)
- *   sinCalificar: actividades con entregas RETURNED pero sin assignedGrade (docente no calificó)
+ *   sinRetornar: actividades con TURNED_IN no excused (docente no retornó)
+ *   sinCalificar: actividades con RETURNED sin assignedGrade no excused (docente no calificó)
  */
 function _gateRetornadas_(aulasCreated) {
   var sinRetornar  = [];   // TURNED_IN — el docente no retornó
@@ -691,7 +695,12 @@ function _gateRetornadas_(aulasCreated) {
       }
 
       // Verificación 1: submissions aún no retornadas por el docente
-      var pendientesRetorno = subs.filter(function(s) { return s.state === "TURNED_IN"; });
+      // Se excluyen las marcadas como "excused" en el gradebook de Classroom:
+      // la API las devuelve con state=TURNED_IN y sub.excused===true pero
+      // no bloquean el cierre porque el docente las dispensó intencionalmente.
+      var pendientesRetorno = subs.filter(function(s) {
+        return s.state === "TURNED_IN" && !s.excused;
+      });
       if (pendientesRetorno.length > 0) {
         sinRetornar.push({
           nomenc:      nomenc,
@@ -704,8 +713,9 @@ function _gateRetornadas_(aulasCreated) {
       // Verificación 2: submissions retornadas pero sin nota asignada
       // El docente puede "retornar" un trabajo sin haber puesto calificación.
       // En ese caso assignedGrade es null y no hay Overall Grade para ese estudiante.
+      // Las submissions excused también quedan con assignedGrade=null — se excluyen.
       var returnedSinNota = subs.filter(function(s) {
-        return s.state === "RETURNED" &&
+        return s.state === "RETURNED" && !s.excused &&
                (s.assignedGrade === undefined || s.assignedGrade === null);
       });
       if (returnedSinNota.length > 0) {
