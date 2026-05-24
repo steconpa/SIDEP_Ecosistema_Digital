@@ -1246,3 +1246,93 @@ function paso9_diagnostico_MY26()   { paso9_diagnostico("MY26"); }
 function paso9_restaurar_MR26_C1M2() { paso9_restaurar("MR26", "C1M2"); }
 /** Restaurar MY26 · C1M2 (rollback) */
 function paso9_restaurar_MY26_C1M2() { paso9_restaurar("MY26", "C1M2"); }
+
+
+// ─────────────────────────────────────────────────────────────
+// DIAGNÓSTICO — inspección cruda de submissions TURNED_IN
+// Usar cuando Gate 1 bloquea entregas que parecen excused/dispensadas.
+// Lee el JSON completo de cada submission para ver exactamente qué
+// campos devuelve la API de Classroom.
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Inspecciona los campos RAW de todas las submissions TURNED_IN
+ * en las aulas CREATED de un cohort/momento.
+ * Loguea JSON.stringify de cada submission para ver si la API
+ * devuelve algún campo que indique "excused" o similar.
+ *
+ * Ejecutar desde el editor — revisar el Log de Ejecución.
+ */
+function paso9_inspeccionarTurnedIn(cohort, moment) {
+  cohort = cohort || "MR26";
+  moment = moment || "C1M2";
+
+  Logger.log("🔍 Inspeccionando submissions TURNED_IN — " + cohort + " · " + moment);
+
+  var coreSS   = getSpreadsheetByName("core");
+  var hojaDep  = coreSS.getSheetByName("MasterDeployments");
+  var depData  = hojaDep.getRange(2, 1, hojaDep.getLastRow() - 1, 17).getValues();
+
+  var aulasCreated = depData.filter(function(r) {
+    return r[COL_DEP.CohortCode]       === cohort &&
+           r[COL_DEP.MomentCode]       === moment &&
+           r[COL_DEP.ScriptStatusCode] === "CREATED";
+  });
+
+  Logger.log("Aulas CREATED: " + aulasCreated.length);
+
+  aulasCreated.forEach(function(row) {
+    var classId = row[COL_DEP.ClassroomID];
+    var nomenc  = row[COL_DEP.GeneratedNomenclature];
+    if (!classId) return;
+
+    // Leer todas las actividades
+    var cwList = [];
+    try {
+      var pt = null;
+      do {
+        var r = Classroom.Courses.CourseWork.list(classId, { pageSize: 100, pageToken: pt });
+        if (r && r.courseWork) cwList = cwList.concat(r.courseWork);
+        pt = r ? (r.nextPageToken || null) : null;
+        if (pt) Utilities.sleep(100);
+      } while (pt);
+    } catch(e) { Logger.log("  ⚠️  CourseWork error " + nomenc + ": " + e.message); return; }
+
+    var cwConPuntos = cwList.filter(function(cw) {
+      return cw.state === "PUBLISHED" && (cw.maxPoints || 0) > 0;
+    });
+
+    cwConPuntos.forEach(function(cw) {
+      var subs = [];
+      try {
+        var st = null;
+        do {
+          var sr = Classroom.Courses.CourseWork.StudentSubmissions.list(
+            classId, cw.id, { pageSize: 100, pageToken: st }
+          );
+          if (sr && sr.studentSubmissions) subs = subs.concat(sr.studentSubmissions);
+          st = sr ? (sr.nextPageToken || null) : null;
+          if (st) Utilities.sleep(100);
+        } while (st);
+        Utilities.sleep(100);
+      } catch(e) { return; }
+
+      var turnedIn = subs.filter(function(s) { return s.state === "TURNED_IN"; });
+      if (turnedIn.length === 0) return;
+
+      Logger.log("\n── " + nomenc + " / " + (cw.title || cw.id));
+      Logger.log("   " + turnedIn.length + " submissions TURNED_IN:");
+      turnedIn.forEach(function(s) {
+        // Log del objeto completo — muestra TODOS los campos que devuelve la API
+        Logger.log("   RAW: " + JSON.stringify(s));
+      });
+    });
+  });
+
+  Logger.log("\n✅ Inspección completa.");
+}
+
+/** Atajo: inspeccionar TURNED_IN de MR26 C1M2 */
+function paso9_inspeccionarTurnedIn_MR26_C1M2() {
+  paso9_inspeccionarTurnedIn("MR26", "C1M2");
+}
