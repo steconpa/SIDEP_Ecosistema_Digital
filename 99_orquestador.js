@@ -29,6 +29,9 @@
  *   17_importarEstudiantes.gs    → importarEstudiantes(), diagnosticoEstudiantes()
  *   18b_notificarEstudiantes.js  → notificarEstudiantes(), notificarEstudiantes_dryRun(),
  *                                   notificarEstudiante_individual()
+ *   22_archivarAulas.js          → archivarAulas(), restaurarAulas(), diagnosticoArchivado()
+ *   23_cierreVentana.js          → cerrarVentana(), menuPreviewCierreVentana(),
+ *                                   menuEjecutarCierreVentana()
  *   00_SIDEP_CONFIG.gs v4.2.0+   → SIDEP_CONFIG, nowSIDEP()
  *
  * FUNCIONES DISPONIBLES (ejecutar directamente desde el editor GAS):
@@ -95,6 +98,15 @@
  *   │  → paso8_notificar()  envía emails con join links   │
  *   │  → paso8_reenviar(email) reenvío individual         │
  *   ├─────────────────────────────────────────────────────┤
+ *   │  PASO 9 — CIERRE DE VENTANA ACADÉMICA               │
+ *   │  PREREQUISITO: notas cargadas con cargarNotasA...() │
+ *   │  → paso9_preview(cohort, moment)  reporte gates     │
+ *   │  → paso9_cerrar(cohort, moment)   cierre completo   │
+ *   │  → paso9_cerrarConBoletin(c, m)   cierre + email    │
+ *   │  → paso9_diagnostico(cohort)      estado archivado  │
+ *   │  → paso9_restaurar(cohort, moment) rollback         │
+ *   │  Atajos: _MR26_C1M2, _MY26_C1M2...                 │
+ *   ├─────────────────────────────────────────────────────┤
  *   │  DIAGNÓSTICO GENERAL                                │
  *   │  → diagnosticoSistema()  estado completo del SS     │
  *   └─────────────────────────────────────────────────────┘
@@ -115,6 +127,17 @@
  *   2. Agregar la entrada en el array `pasos` de onboardingCompleto()
  *      solo si el paso es seguro sin opciones (muchos requieren cohortCode).
  *   3. Actualizar el bloque ASCII de FUNCIONES DISPONIBLES arriba.
+ *
+ * CAMBIOS v2.5 vs v2.4:
+ *   - NUEVO: sección PASO 9 — Cierre de Ventana Académica.
+ *     paso9_preview(cohort, moment): reporte de gates sin cambios.
+ *     paso9_cerrar(cohort, moment): cierre completo (gates + snapshot + archivar).
+ *     paso9_cerrarConBoletin(cohort, moment): cierre + email de notas finales.
+ *     paso9_diagnostico(cohort): estado de archivado de MasterDeployments.
+ *     paso9_restaurar(cohort, moment): rollback — ARCHIVED → CREATED.
+ *     Atajos directos por ventana: paso9_cerrar_MR26_C1M2(), etc.
+ *   - Actualizado DEPENDE DE: refleja 22_archivarAulas.js y 23_cierreVentana.js.
+ *   - Actualizado FUNCIONES DISPONIBLES: refleja sección PASO 9 completa.
  *
  * CAMBIOS v2.4 vs v2.3:
  *   - NUEVO: sección STAGING APERTURAS — flujo de apertura desde Google Sheets.
@@ -1079,3 +1102,147 @@ function paso_aplicarTipos() {
   aplicarTiposPostBootstrap();
   Logger.log("OK Tipos aplicados.");
 }
+
+
+// ─────────────────────────────────────────────────────────────
+// PASO 9 — Cierre de Ventana Académica
+//
+// PREREQUISITES:
+//   - paso7_importarEstudiantes() ejecutado (Enrollments ACTIVE)
+//   - cargarNotasAGradeHistory() ejecutado desde el Panel (GradeHistory Fuente=MANUAL)
+//   - Docentes han retornado todas las entregas en Classroom (state=RETURNED)
+//
+// FLUJO RECOMENDADO:
+//   1. paso9_preview('MR26', 'C1M2')         → ver si los dos gates pasan
+//   2. (si gates fallan → corregir y repetir paso 1)
+//   3. paso9_cerrar('MR26', 'C1M2')          → cierre real (o cerrarConBoletin)
+//   4. paso9_diagnostico('MR26')             → confirmar estado ARCHIVED
+//
+// REVERSIBILIDAD:
+//   paso9_restaurar('MR26', 'C1M2')          → rollback completo ARCHIVED → CREATED
+//   El Semáforo vuelve a procesar las aulas restauradas en la próxima ejecución.
+//
+// PARAMETROS:
+//   cohort → CohortCode de la ventana (ej. 'MR26', 'MY26')
+//   moment → MomentCode opcional (ej. 'C1M2') — omitir = todos los momentos
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Preview del cierre: reporte de gates sin ejecutar cambios.
+ * Gate 1: verifica entregas RETURNED en Classroom.
+ * Gate 2: verifica notas MANUAL en GradeHistory.
+ *
+ * @param {string} cohort  — CohortCode (ej. 'MR26')
+ * @param {string} [moment] — MomentCode (ej. 'C1M2'), omitir para todos
+ */
+function paso9_preview(cohort, moment) {
+  Logger.log("▶ PASO 9 PREVIEW: Verificando gates de cierre para " +
+    cohort + (moment ? " · " + moment : "") + "...");
+  cerrarVentana({
+    cohortCode: cohort,
+    momentCode: moment || null,
+    dryRun:     true
+  });
+}
+
+/**
+ * Cierre completo de una ventana académica.
+ * Ejecuta gates → snapshot → archiva aulas → registra en CIERRE_LOG.
+ * NO envía boletín de notas — usar paso9_cerrarConBoletin() para eso.
+ *
+ * @param {string} cohort
+ * @param {string} [moment]
+ */
+function paso9_cerrar(cohort, moment) {
+  Logger.log("▶ PASO 9 CIERRE: Cerrando ventana " +
+    cohort + (moment ? " · " + moment : "") + "...");
+  cerrarVentana({
+    cohortCode: cohort,
+    momentCode: moment || null,
+    dryRun:     false,
+    confirmar:  true
+  });
+}
+
+/**
+ * Cierre completo + envío de boletín de notas por email a cada estudiante.
+ *
+ * @param {string} cohort
+ * @param {string} [moment]
+ */
+function paso9_cerrarConBoletin(cohort, moment) {
+  Logger.log("▶ PASO 9 CIERRE + BOLETÍN: Cerrando ventana " +
+    cohort + (moment ? " · " + moment : "") + " y enviando boletines...");
+  cerrarVentana({
+    cohortCode:   cohort,
+    momentCode:   moment || null,
+    dryRun:       false,
+    confirmar:    true,
+    enviarBoletin: true
+  });
+}
+
+/**
+ * Diagnóstico de estado de archivado de una ventana.
+ * Muestra conteos de CREATED / ARCHIVED / PENDING / ERROR por programa.
+ *
+ * @param {string} [cohort] — omitir para ver todas las ventanas
+ * @param {string} [moment]
+ */
+function paso9_diagnostico(cohort, moment) {
+  Logger.log("▶ PASO 9 DIAGNÓSTICO: Estado de archivado" +
+    (cohort ? " — " + cohort : " — todas las ventanas") + "...");
+  diagnosticoArchivado({
+    cohortCode: cohort || null,
+    momentCode: moment || null
+  });
+}
+
+/**
+ * Restaura aulas archivadas a estado ACTIVE/CREATED (rollback del cierre).
+ * Después de restaurar, el Semáforo vuelve a procesar estas aulas.
+ *
+ * @param {string} cohort
+ * @param {string} [moment]
+ */
+function paso9_restaurar(cohort, moment) {
+  Logger.log("▶ PASO 9 RESTAURAR: Revirtiendo archivado de " +
+    cohort + (moment ? " · " + moment : "") + "...");
+  restaurarAulas({
+    cohortCode: cohort,
+    momentCode: moment || null,
+    confirmar:  true
+  });
+}
+
+
+// ── Atajos directos por ventana ──────────────────────────────
+
+/** Preview cierre MR26 · C1M2 */
+function paso9_preview_MR26_C1M2()  { paso9_preview("MR26", "C1M2"); }
+/** Cierre MR26 · C1M2 */
+function paso9_cerrar_MR26_C1M2()   { paso9_cerrar("MR26", "C1M2"); }
+/** Cierre MR26 · C1M2 con boletín */
+function paso9_cerrarConBoletin_MR26_C1M2() { paso9_cerrarConBoletin("MR26", "C1M2"); }
+
+/** Preview cierre MY26 · C1M2 */
+function paso9_preview_MY26_C1M2()  { paso9_preview("MY26", "C1M2"); }
+/** Cierre MY26 · C1M2 */
+function paso9_cerrar_MY26_C1M2()   { paso9_cerrar("MY26", "C1M2"); }
+/** Cierre MY26 · C1M2 con boletín */
+function paso9_cerrarConBoletin_MY26_C1M2() { paso9_cerrarConBoletin("MY26", "C1M2"); }
+
+/** Preview cierre EN26 · C1M1 */
+function paso9_preview_EN26_C1M1()  { paso9_preview("EN26", "C1M1"); }
+/** Cierre EN26 · C1M1 */
+function paso9_cerrar_EN26_C1M1()   { paso9_cerrar("EN26", "C1M1"); }
+
+/** Diagnóstico ventana MR26 completa */
+function paso9_diagnostico_MR26()   { paso9_diagnostico("MR26"); }
+/** Diagnóstico ventana MY26 completa */
+function paso9_diagnostico_MY26()   { paso9_diagnostico("MY26"); }
+
+/** Restaurar MR26 · C1M2 (rollback) */
+function paso9_restaurar_MR26_C1M2() { paso9_restaurar("MR26", "C1M2"); }
+/** Restaurar MY26 · C1M2 (rollback) */
+function paso9_restaurar_MY26_C1M2() { paso9_restaurar("MY26", "C1M2"); }

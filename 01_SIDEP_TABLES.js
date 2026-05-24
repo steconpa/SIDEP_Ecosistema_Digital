@@ -31,9 +31,25 @@
  *   Las constantes de este archivo espejean las tablas _CFG_* en Sheets.
  *   Cualquier cambio aquí requiere actualizar el Sheet correspondiente también.
  *
- * VERSIÓN: 1.3.0
+ * VERSIÓN: 1.4.0
  * AUTOR: Stevens Contreras
- * FECHA: 2026-04-15
+ * FECHA: 2026-05-23
+ *
+ * CAMBIOS v1.5.0 vs v1.4.0 — Auto-promoción de notas Classroom → GradeHistory:
+ *   - GradeHistory.Fuente: ahora acepta dos valores:
+ *       MANUAL  → cargada desde el Panel Académico (prioridad absoluta, nunca sobreescrita).
+ *       CIERRE  → auto-promovida desde Classroom al ejecutar cerrarVentana() (idempotente).
+ *   - COLUMN_TYPES: GradeHistory.Fuente actualizado de ["MANUAL","CLASSROOM"] a ["MANUAL","CIERRE"].
+ *   - NOTA: GradeAudit.Fuente conserva "CLASSROOM" (tabla diferente, semántica diferente).
+ *
+ * CAMBIOS v1.4.0 vs v1.3.0 — Cierre de Ventana Académica (modelo v4.5.0):
+ *   - NUEVA tabla ADMIN: CIERRE_LOG — auditoría permanente de cada cierre de ventana.
+ *     Una fila por ejecución de cerrarVentana() (preview o real).
+ *     Escrita por 23_cierreVentana.js vía _registrarCierreLog_().
+ *     14 columnas: CierreLogID, CohortCode, MomentCode, ProgramCode, Action,
+ *     Result, AulasTarget, AulasArchivadas, FaltantesGate1, FaltantesGate2,
+ *     BoletinesEnviados, Message, ExecutedAt, ExecutedBy.
+ *   - COLUMN_TYPES: entrada de CIERRE_LOG (Action y Result con DROPDOWN_INLINE).
  *
  * CAMBIOS v1.3.0 vs v1.2.0 — Configuración dinámica de umbrales (modelo v4.4.0):
  *   - NUEVA tabla CORE: _CFG_SEMAFORO — umbrales y escala de calificación.
@@ -46,8 +62,8 @@
  *   - NUEVA columna _CFG_SUBJECTS.HasSyllabus (DROPDOWN_INLINE TRUE/FALSE).
  *     Identifica materias sin temario formal (DPW, PAI, SEM, MDA).
  *     Declarada en COLUMN_TYPES porque no sigue convención Is* (no auto-detectada).
- *   - NUEVA tabla ADMIN: GradeHistory — historial manual pre-Classroom.
- *     Una fila por estudiante × asignatura × momento. Fuente siempre = MANUAL.
+ *   - NUEVA tabla ADMIN: GradeHistory — historial de notas finales por asignatura.
+ *     Una fila por estudiante × asignatura × momento. Fuente = MANUAL (Panel) | CIERRE (auto).
  *     Política de calificación: escala 1.0–5.0 (DEC-2026-015).
  *   - NUEVA tabla BI: GradeAudit — tabla primaria del Semáforo (Opción B).
  *     ViewActiveStudents no cambia (resumen ejecutivo). GradeAudit contiene el
@@ -689,7 +705,7 @@ const ADMIN_TABLES = {
   //
   // RELACIÓN CON EL SEMÁFORO (20_semaforo.js):
   //   El motor lee GradeHistory para calcular PromedioAcumulado en GradeAudit.
-  //   Fuente siempre = MANUAL para filas de esta tabla.
+  //   Fuente = MANUAL (Panel Académico, prioridad absoluta) | CIERRE (auto-promovida al cerrar ventana).
   //   Una sola fila por estudiante × asignatura × momento (idempotencia: StudentID+SubjectCode+MomentCode).
   "GradeHistory": [
     "GradeHistoryID",    // TEXT — PK — "ghi_<uuid>"
@@ -703,9 +719,45 @@ const ADMIN_TABLES = {
     "Nota",              // NUMBER — 1.0–5.0 — nota final de la asignatura
     "Nivel",             // INSUFICIENTE | ACEPTABLE | BUENO | EXCELENTE
     "Estado",            // APROBADO (Nota ≥ 3.0) | REPROBADO (Nota < 3.0)
-    "Fuente",            // MANUAL siempre — distingue del flujo Classroom
+    "Fuente",            // MANUAL (Panel, prioridad absoluta) | CIERRE (auto-promovida por cerrarVentana)
     "CreatedAt",
     "CreatedBy"
+  ],
+
+  // Auditoría de cierres de ventana — v4.5.0 (Cierre Académico).
+  //
+  // PROPÓSITO: registro inmutable de cada ejecución de cerrarVentana().
+  //   Una fila por llamada (preview o real). Trazabilidad completa del cierre.
+  //   Escrita por 23_cierreVentana.js vía _registrarCierreLog_().
+  //
+  // Action válidos:
+  //   FULL_CLOSE → cierre real ejecutado (confirmar:true)
+  //   PREVIEW    → dry run informativo (dryRun:true)
+  //
+  // Result válidos:
+  //   OK         → cierre completado sin errores
+  //   GATE1_FAIL → abortado: hay entregas sin RETURNED en Classroom
+  //   GATE2_FAIL → abortado: hay pares (StudentID, SubjectCode) sin nota MANUAL
+  //   ERROR      → excepción inesperada en la ejecución
+  //   DRY_RUN    → preview completado (sin cambios)
+  //
+  // IDEMPOTENCIA: cada ejecución AGREGA una fila — nunca sobreescribe.
+  //   Permite ver el historial completo de intentos y cierres por ventana.
+  "CIERRE_LOG": [
+    "CierreLogID",        // TEXT — PK — "clg_<uuid>"
+    "CohortCode",         // ref _CFG_COHORTS — ventana cerrada
+    "MomentCode",         // ref _CFG_MOMENTS — vacío si se cerró toda la ventana
+    "ProgramCode",        // ref _CFG_PROGRAMS — vacío si aplica a todos los programas
+    "Action",             // FULL_CLOSE | PREVIEW
+    "Result",             // OK | GATE1_FAIL | GATE2_FAIL | ERROR | DRY_RUN
+    "AulasTarget",        // NUMBER — deployments en scope de la operación
+    "AulasArchivadas",    // NUMBER — efectivamente archivadas (0 si gate falló)
+    "FaltantesGate1",     // NUMBER — actividades sin RETURNED (0 si gate pasó)
+    "FaltantesGate2",     // NUMBER — pares (StudentID, SubjectCode) sin nota MANUAL
+    "BoletinesEnviados",  // NUMBER — emails de boletín enviados exitosamente
+    "Message",            // TEXT — resumen legible o detalle del error
+    "ExecutedAt",         // DATETIME
+    "ExecutedBy"          // TEXT (email del ejecutor)
   ]
 };
 
@@ -1042,7 +1094,7 @@ const COLUMN_TYPES = {
     "MomentCode":       { type: "DROPDOWN_CAT",    source: "_CFG_MOMENTS" },
     "Nivel":            { type: "DROPDOWN_INLINE", values: ["INSUFICIENTE", "ACEPTABLE", "BUENO", "EXCELENTE"] },
     "Estado":           { type: "DROPDOWN_INLINE", values: ["APROBADO", "REPROBADO"] },
-    "Fuente":           { type: "DROPDOWN_INLINE", values: ["MANUAL", "CLASSROOM"] }
+    "Fuente":           { type: "DROPDOWN_INLINE", values: ["MANUAL", "CIERRE"] }
   },
 
   // ── BI ────────────────────────────────────────────────────────────────────

@@ -99,6 +99,11 @@ const PANEL_CONFIG = {
  *   — SALIDA —
  *   ├── 📄 Generar boletín
  *   └── 📊 Generar resumen pendientes
+ *
+ *   — CIERRE DE VENTANA (23_cierreVentana.js) —
+ *   ├── 🔍 Preview cierre de ventana
+ *   ├── 🔒 Ejecutar cierre de ventana
+ *   └── 📦 Diagnóstico de archivado
  */
 function onOpenPanel(e) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -108,24 +113,65 @@ function onOpenPanel(e) {
     .createMenu("Panel Académico")
 
     // — BOOTSTRAP —
-    .addItem("🧱 Recrear estructura del panel",  "setupPanelAcademico")
+    .addItem("🧱 Recrear estructura del panel",      "setupPanelAcademico")
     .addSeparator()
 
     // — ENTRADA DE NOTAS —
-    .addItem("📝 Generar plantilla de notas",    "generarPlantillaNotas")
-    .addItem("💾 Cargar notas a GradeHistory",   "cargarNotasAGradeHistory")
+    .addItem("📝 Generar plantilla de notas",         "generarPlantillaNotas")
+    .addItem("💾 Cargar notas a GradeHistory",        "cargarNotasAGradeHistory")
     .addSeparator()
 
     // — CÁLCULO ACADÉMICO —
-    .addItem("🔄 Refrescar notas Classroom",     "refrescarNotasClassroom")
+    .addItem("🔄 Refrescar notas Classroom",          "refrescarNotasClassroom")
     .addItem("🚦 Refrescar semáforo (solo repintar)", "refrescarSemaforo")
     .addSeparator()
 
     // — SALIDA —
-    .addItem("📄 Generar boletín",               "generarBoletin")
-    .addItem("📊 Generar resumen pendientes",    "generarResumenPendientes")
+    .addItem("📄 Generar boletín",                   "generarBoletin")
+    .addItem("📊 Generar resumen pendientes",         "generarResumenPendientes")
+    .addSeparator()
+
+    // — CIERRE DE VENTANA (23_cierreVentana.js) —
+    // FLUJO: Preview → verificar gates → Ejecutar cierre
+    // Preview muestra en Logger si las gates pasan sin modificar nada.
+    // Ejecutar cierre archiva aulas, registra en CIERRE_LOG y (opcional) envía boletín.
+    .addItem("🔍 Preview cierre de ventana",          "menuPreviewCierreVentana")
+    .addItem("🔒 Ejecutar cierre de ventana",         "menuEjecutarCierreVentana")
+    .addItem("📦 Diagnóstico de archivado",           "menuDiagnosticoArchivado")
 
     .addToUi();
+}
+
+
+/**
+ * Wrapper de menú para diagnosticoArchivado() de 22_archivarAulas.js.
+ * Pide cohortCode/momentCode y muestra el estado de archivado en Logger.
+ */
+function menuDiagnosticoArchivado() {
+  var ui = SpreadsheetApp.getUi();
+
+  var rCohort = ui.prompt(
+    "Diagnóstico de Archivado",
+    "Código de ventana (ej. MR26) — dejar vacío para todos:",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (rCohort.getSelectedButton() !== ui.Button.OK) return;
+  var cohortCode = rCohort.getResponseText().trim().toUpperCase() || null;
+
+  var rMoment = ui.prompt(
+    "Diagnóstico de Archivado",
+    "Código de momento (ej. C1M2) — dejar vacío para todos:",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (rMoment.getSelectedButton() !== ui.Button.OK) return;
+  var momentCode = rMoment.getResponseText().trim() || null;
+
+  ui.alert("Ejecutando diagnóstico — revise el Log de Ejecución (menú Ver → Registros).");
+
+  diagnosticoArchivado({
+    cohortCode: cohortCode,
+    momentCode: momentCode
+  });
 }
 
 
