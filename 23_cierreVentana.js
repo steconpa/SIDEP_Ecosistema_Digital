@@ -65,7 +65,7 @@
  * DEPENDE DE:
  *   00_SIDEP_CONFIG.js  → SIDEP_CONFIG, nowSIDEP(), uuid()
  *   02_SIDEP_HELPERS.js → getSpreadsheetByName()
- *   14_crearAulas.js    → COL_DEP (índices 0-based de MasterDeployments)
+ *   01_SIDEP_TABLES.js  → COL_DEP, COL_GH, COL_ENR, COL_STU (§ 6 — índices 0-based)
  *   20_semaforo.js      → _normalizarNota_(), _calcularNivel_(), CFG_SEMAFORO (scope global)
  *   22_archivarAulas.js → archivarAulas()
  *   Google Classroom API v1 (habilitar en Editor → ➕ Servicios avanzados)
@@ -78,68 +78,8 @@
  */
 
 
-// ─────────────────────────────────────────────────────────────
-// ÍNDICES DE COLUMNA (0-based, espejo de 01_SIDEP_TABLES.js)
-// Solo se declaran las tablas que este archivo lee directamente.
-// COL_DEP se importa desde 14_crearAulas.js (scope global GAS).
-// ─────────────────────────────────────────────────────────────
-
-// GradeHistory (ADMIN) — 14 columnas
-var COL_GH = {
-  GradeHistoryID:   0,
-  StudentID:        1,
-  SubjectCode:      2,
-  SubjectName:      3,
-  ProgramCode:      4,
-  EntryCohortCode:  5,
-  WindowCohortCode: 6,
-  MomentCode:       7,
-  Nota:             8,
-  Nivel:            9,
-  Estado:           10,
-  Fuente:           11,
-  CreatedAt:        12,
-  CreatedBy:        13
-};
-
-// Enrollments (ADMIN) — 13 columnas
-var COL_ENR = {
-  EnrollmentID:         0,
-  StudentID:            1,
-  DeploymentID:         2,
-  AperturaID:           3,
-  EntryCohortCode:      4,
-  WindowCohortCode:     5,
-  MomentCode:           6,
-  AttemptNumber:        7,
-  EnrollmentStatusCode: 8,
-  CreatedAt:            9,
-  CreatedBy:            10,
-  UpdatedAt:            11,
-  UpdatedBy:            12
-};
-
-// Students (ADMIN) — 18 columnas
-var COL_STU = {
-  StudentID:         0,
-  DocumentType:      1,
-  DocumentNumber:    2,
-  StudentType:       3,
-  FirstName:         4,
-  LastName:          5,
-  Phone:             6,
-  Email:             7,
-  CohortCode:        8,
-  ProgramCode:       9,
-  CampusCode:        10,
-  StudentStatusCode: 11,
-  CompletionStatus:  12,
-  GraduationDate:    13,
-  CreatedAt:         14,
-  CreatedBy:         15,
-  UpdatedAt:         16,
-  UpdatedBy:         17
-};
+// COL_GH (GradeHistory), COL_ENR (Enrollments), COL_STU (Students), COL_DEP (MasterDeployments)
+// definidos en 01_SIDEP_TABLES.js § 6 — fuente única de verdad.
 
 // Columnas de CIERRE_LOG — tabla de auditoría de cierres
 var CIERRE_LOG_COLS = [

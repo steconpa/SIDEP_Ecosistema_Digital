@@ -103,17 +103,17 @@
  *   Si se agota el límite diario: esperar 24h y continuar — el script retoma
  *   desde donde quedó (topics TOPICS_CREATED no se vuelven a crear).
  *
- * CONSTANTES DE COLUMNAS (COL_DEP_ y COL_TOP_):
- *   Definidas al inicio del archivo para evitar índices mágicos.
- *   Si el schema de MasterDeployments o DeploymentTopics cambia en
- *   00_SIDEP_CONFIG.gs, actualizar aquí también.
+ * CONSTANTES DE COLUMNAS (COL_DEP, COL_TOP):
+ *   Definidas en 01_SIDEP_TABLES.js § 6 — fuente única de verdad.
+ *   Si el schema de MasterDeployments o DeploymentTopics cambia,
+ *   actualizar allí y re-ejecutar setupSidepTables().
  *
  * CAMBIOS v1.3 vs v1.2:
  *   - nowSIDEP() reemplaza new Date() para timestamps en America/Bogota.
  *   - Logger en estructurarAulas() muestra "v1.3" (antes decía "v1.0" — bug).
  *   - diagnosticoEstructura() unifica las dos lecturas de MasterDeployments
  *     en una sola llamada getValues() batch.
- *   - Comentario en COL_TOP_.AssignmentIDs documenta uso dual (Fase 2 / error msg).
+ *   - Comentario en COL_TOP.AssignmentIDs documenta uso dual (Fase 2 / error msg).
  *   - JSDoc de leerTopicsExistentes_() corregido: clave real es "depID_weekN".
  *   - Documentación completa de flujo, idempotencia, batch y Fase 2.
  *
@@ -128,48 +128,7 @@
  */
 
 
-// ─────────────────────────────────────────────────────────────
-// CONSTANTES DE COLUMNAS (0-base)
-// Mantener sincronizadas con los schemas de 00_SIDEP_CONFIG.gs.
-// Si cambia el orden de columnas, actualizar ambos lados.
-// ─────────────────────────────────────────────────────────────
-
-/** Índices de columnas de MasterDeployments (0-base) */
-var COL_DEP_ = {
-  DeploymentID:          0,
-  ProgramCode:           1,
-  ModalityCode:          2,
-  CohortCode:            3,
-  MomentCode:            4,
-  SubjectCode:           5,
-  GroupCode:             6,
-  SubjectName:           7,
-  GeneratedNomenclature: 8,
-  GeneratedClassroomName:9,
-  ClassroomID:           10,
-  ClassroomURL:          11,
-  ScriptStatusCode:      12,
-  CampusCode:            13
-};
-
-/** Índices de columnas de DeploymentTopics (0-base) */
-var COL_TOP_ = {
-  TopicRowID:            0,
-  DeploymentID:          1,
-  ClassroomCourseID:     2,
-  ClassroomTopicID:      3,
-  SubjectCode:           4,
-  WeekNumber:            5,
-  TopicName:             6,
-  StructureStatusCode:   7,
-  CourseWorkCount:       8,   // Fase 2 — 0 en Fase 1
-  MaterialCount:         9,   // Fase 2 — 0 en Fase 1
-  AssignmentIDs:         10,  // Fase 2: lista de IDs | Fase 1 ERROR: mensaje de error
-  CreatedAt:             11,
-  CreatedBy:             12,
-  UpdatedAt:             13,
-  UpdatedBy:             14
-};
+// COL_DEP (MasterDeployments) y COL_TOP (DeploymentTopics) definidos en 01_SIDEP_TABLES.js § 6.
 
 
 // ─────────────────────────────────────────────────────────────
@@ -227,10 +186,10 @@ function estructurarAulas(options) {
 
     // Filtrar: solo CREATED + filtros opcionales de la llamada
     var depsFiltrados = allDeps.filter(function(row) {
-      if (row[COL_DEP_.ScriptStatusCode] !== "CREATED") return false;
-      if (opts.programCode && row[COL_DEP_.ProgramCode] !== opts.programCode) return false;
-      if (opts.momentCode  && row[COL_DEP_.MomentCode]  !== opts.momentCode)  return false;
-      if (opts.cohortCode  && row[COL_DEP_.CohortCode]  !== opts.cohortCode)  return false;
+      if (row[COL_DEP.ScriptStatusCode] !== "CREATED") return false;
+      if (opts.programCode && row[COL_DEP.ProgramCode] !== opts.programCode) return false;
+      if (opts.momentCode  && row[COL_DEP.MomentCode]  !== opts.momentCode)  return false;
+      if (opts.cohortCode  && row[COL_DEP.CohortCode]  !== opts.cohortCode)  return false;
       return true;
     });
 
@@ -238,8 +197,8 @@ function estructurarAulas(options) {
 
     // Separar los que ya tienen todas sus semanas en DeploymentTopics
     var depsPendientes = depsFiltrados.filter(function(row) {
-      var depID   = row[COL_DEP_.DeploymentID];
-      var semanas = syllabus[row[COL_DEP_.SubjectCode]];
+      var depID   = row[COL_DEP.DeploymentID];
+      var semanas = syllabus[row[COL_DEP.SubjectCode]];
       if (!semanas || semanas.length === 0) return false; // sin syllabus → omitir
       // "completo" = todas las semanas del syllabus ya tienen topic registrado
       var yaCompleto = semanas.every(function(s) {
@@ -251,8 +210,8 @@ function estructurarAulas(options) {
     Logger.log("  📊 Pendientes de estructurar       : " + depsPendientes.length);
     Logger.log("  📊 Sin syllabus (se omiten)        : " +
       depsFiltrados.filter(function(r) {
-        return !syllabus[r[COL_DEP_.SubjectCode]] ||
-               syllabus[r[COL_DEP_.SubjectCode]].length === 0;
+        return !syllabus[r[COL_DEP.SubjectCode]] ||
+               syllabus[r[COL_DEP.SubjectCode]].length === 0;
       }).length);
 
     if (depsPendientes.length === 0) {
@@ -275,10 +234,10 @@ function estructurarAulas(options) {
     var hojaTop = obtenerOCrearDeploymentTopics_(coreSS);
 
     batch.forEach(function(row) {
-      var depID       = row[COL_DEP_.DeploymentID];
-      var courseID    = row[COL_DEP_.ClassroomID];
-      var subjectCode = row[COL_DEP_.SubjectCode];
-      var nomencl     = row[COL_DEP_.GeneratedNomenclature];
+      var depID       = row[COL_DEP.DeploymentID];
+      var courseID    = row[COL_DEP.ClassroomID];
+      var subjectCode = row[COL_DEP.SubjectCode];
+      var nomencl     = row[COL_DEP.GeneratedNomenclature];
       var semanas     = syllabus[subjectCode] || [];
 
       Logger.log("  → " + nomencl + " (" + semanas.length + " semanas)");
@@ -333,7 +292,7 @@ function estructurarAulas(options) {
           errores++;
           // Registrar error sin detener el batch.
           // AssignmentIDs (col 10) almacena el mensaje de error en Fase 1 —
-          // es el único campo de texto libre disponible (ver COL_TOP_.AssignmentIDs).
+          // es el único campo de texto libre disponible (ver COL_TOP.AssignmentIDs).
           nuevasFilas.push([
             topicRowID, depID, courseID, "",
             subjectCode, s.semana, topicName, "STRUCTURE_ERROR",
@@ -422,9 +381,9 @@ function diagnosticoEstructura() {
     if (lastTop > 1) {
       hojaTop.getRange(2, 1, lastTop - 1, 15).getValues()
         .forEach(function(r) {
-          var status = r[COL_TOP_.StructureStatusCode];
+          var status = r[COL_TOP.StructureStatusCode];
           conteo[status] = (conteo[status] || 0) + 1;
-          conEstructura[r[COL_TOP_.DeploymentID]] = true; // acumular para AVANCE
+          conEstructura[r[COL_TOP.DeploymentID]] = true; // acumular para AVANCE
         });
     }
 
@@ -459,10 +418,10 @@ function diagnosticoEstructura() {
       // o hacer segunda lectura solo cuando hay errores que reportar.
       hojaTop.getRange(2, 1, lastTop - 1, 15).getValues()
         .forEach(function(r) {
-          if (r[COL_TOP_.StructureStatusCode] === "STRUCTURE_ERROR" && errCount < 5) {
+          if (r[COL_TOP.StructureStatusCode] === "STRUCTURE_ERROR" && errCount < 5) {
             // AssignmentIDs (col 10) contiene el mensaje de error en Fase 1
-            Logger.log("   ❌ " + r[COL_TOP_.TopicName] + " → " +
-                       String(r[COL_TOP_.AssignmentIDs]).substring(0, 80));
+            Logger.log("   ❌ " + r[COL_TOP.TopicName] + " → " +
+                       String(r[COL_TOP.AssignmentIDs]).substring(0, 80));
             errCount++;
           }
         });
@@ -561,8 +520,8 @@ function leerTopicsExistentes_(coreSS) {
   var data = hoja.getRange(2, 1, hoja.getLastRow() - 1, 6).getValues();
   var set  = {};
   data.forEach(function(row) {
-    var depID = row[COL_TOP_.DeploymentID]; // índice 1
-    var weekN = row[COL_TOP_.WeekNumber];   // índice 5
+    var depID = row[COL_TOP.DeploymentID]; // índice 1
+    var weekN = row[COL_TOP.WeekNumber];   // índice 5
     if (depID && weekN) set[depID + "_" + weekN] = true;
   });
   return set;

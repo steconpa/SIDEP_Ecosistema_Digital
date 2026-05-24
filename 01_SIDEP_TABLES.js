@@ -31,11 +31,18 @@
  *   Las constantes de este archivo espejean las tablas _CFG_* en Sheets.
  *   Cualquier cambio aquí requiere actualizar el Sheet correspondiente también.
  *
- * VERSIÓN: 1.4.0
+ * VERSIÓN: 1.5.0
  * AUTOR: Stevens Contreras
- * FECHA: 2026-05-23
+ * FECHA: 2026-05-24
  *
- * CAMBIOS v1.5.0 vs v1.4.0 — Auto-promoción de notas Classroom → GradeHistory:
+ * CAMBIOS v1.5.0 vs v1.4.0 — Centralización de índices de columna (COL_*):
+ *   - NUEVA SECCIÓN 6: COL_APR, COL_DEP, COL_TOP, COL_GH, COL_ENR, COL_STU.
+ *     Fuente única de verdad para todos los índices 0-based del sistema.
+ *     Eliminadas definiciones locales de: 14_crearAulas.js (COL_APR, COL_DEP),
+ *     15_estructurarAulas.js (COL_DEP_, COL_TOP_), 23_cierreVentana.js (COL_GH, COL_ENR, COL_STU).
+ *     Regla: cualquier archivo que use getValues() sobre una tabla DEBE leer de aquí.
+ *
+ * CAMBIOS v1.5.0 vs v1.4.0 — Auto-promoción de notas Classroom → GradeHistory (previo):
  *   - GradeHistory.Fuente: ahora acepta dos valores:
  *       MANUAL  → cargada desde el Panel Académico (prioridad absoluta, nunca sobreescrita).
  *       CIERRE  → auto-promovida desde Classroom al ejecutar cerrarVentana() (idempotente).
@@ -1122,4 +1129,137 @@ const COLUMN_TYPES = {
     "SemaforoColor":    { type: "DROPDOWN_INLINE", values: ["GREEN", "YELLOW", "RED", "GREY"] },
     "Fuente":           { type: "DROPDOWN_INLINE", values: ["MANUAL", "CLASSROOM"] }
   }
+};
+
+
+// ═════════════════════════════════════════════════════════════════
+// SECCIÓN 6: ÍNDICES DE COLUMNA (COL_*) — 0-base
+// ═════════════════════════════════════════════════════════════════
+//
+// FUENTE DE VERDAD para todos los índices de columna del sistema.
+// Cada constante espeja la definición de su tabla en CORE_TABLES / ADMIN_TABLES.
+//
+// REGLA: cualquier archivo que lea datos de una tabla con getValues()
+// DEBE usar los índices de aquí — NUNCA redefinir COL_* localmente.
+//
+// CÓMO ACTUALIZAR:
+//   1. Agregar / quitar columna en CORE_TABLES o ADMIN_TABLES (arriba).
+//   2. Actualizar el COL_* correspondiente aquí.
+//   3. Incrementar SIDEP_CONFIG.modelVersion.
+//   4. Re-ejecutar setupSidepTables().
+
+/** APERTURA_PLAN (CORE) — 15 columnas */
+var COL_APR = {
+  AperturaID:     0,
+  CohortCode:     1,
+  MomentCode:     2,
+  SubjectCode:    3,
+  ProgramCode:    4,
+  IsTransversal:  5,
+  AperturaStatus: 6,
+  DeploymentID:   7,
+  PlannedBy:      8,
+  PlannedAt:      9,
+  Notes:          10,
+  CreatedAt:      11,
+  CreatedBy:      12,
+  UpdatedAt:      13,
+  UpdatedBy:      14
+};
+
+/** MasterDeployments (CORE) — 17 columnas */
+var COL_DEP = {
+  DeploymentID:           0,
+  ProgramCode:            1,
+  ModalityCode:           2,
+  CohortCode:             3,
+  MomentCode:             4,
+  SubjectCode:            5,
+  GroupCode:              6,
+  SubjectName:            7,
+  GeneratedNomenclature:  8,
+  GeneratedClassroomName: 9,
+  ClassroomID:            10,
+  ClassroomURL:           11,
+  ScriptStatusCode:       12,
+  CampusCode:             13,
+  CreatedAt:              14,
+  CreatedBy:              15,
+  Notes:                  16
+};
+
+/** DeploymentTopics (CORE) — 15 columnas */
+var COL_TOP = {
+  TopicRowID:            0,
+  DeploymentID:          1,
+  ClassroomCourseID:     2,
+  ClassroomTopicID:      3,
+  SubjectCode:           4,
+  WeekNumber:            5,
+  TopicName:             6,
+  StructureStatusCode:   7,
+  CourseWorkCount:       8,
+  MaterialCount:         9,
+  AssignmentIDs:         10,  // Fase 2: IDs pipe-separated | Fase 1 ERROR: mensaje de error
+  CreatedAt:             11,
+  CreatedBy:             12,
+  UpdatedAt:             13,
+  UpdatedBy:             14
+};
+
+/** GradeHistory (ADMIN) — 14 columnas */
+var COL_GH = {
+  GradeHistoryID:   0,
+  StudentID:        1,
+  SubjectCode:      2,
+  SubjectName:      3,
+  ProgramCode:      4,
+  EntryCohortCode:  5,
+  WindowCohortCode: 6,
+  MomentCode:       7,
+  Nota:             8,
+  Nivel:            9,
+  Estado:           10,
+  Fuente:           11,
+  CreatedAt:        12,
+  CreatedBy:        13
+};
+
+/** Enrollments (ADMIN) — 13 columnas */
+var COL_ENR = {
+  EnrollmentID:         0,
+  StudentID:            1,
+  DeploymentID:         2,
+  AperturaID:           3,
+  EntryCohortCode:      4,
+  WindowCohortCode:     5,
+  MomentCode:           6,
+  AttemptNumber:        7,
+  EnrollmentStatusCode: 8,
+  CreatedAt:            9,
+  CreatedBy:            10,
+  UpdatedAt:            11,
+  UpdatedBy:            12
+};
+
+/** Students (ADMIN) — 18 columnas */
+var COL_STU = {
+  StudentID:         0,
+  DocumentType:      1,
+  DocumentNumber:    2,
+  StudentType:       3,
+  FirstName:         4,
+  LastName:          5,
+  Phone:             6,
+  Email:             7,
+  CohortCode:        8,
+  ProgramCode:       9,
+  CampusCode:        10,
+  StudentStatusCode: 11,
+  CompletionStatus:  12,
+  GraduationDate:    13,
+  CreatedAt:         14,
+  CreatedBy:         15,
+  UpdatedAt:         16,
+  UpdatedBy:         17
 };

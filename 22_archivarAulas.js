@@ -23,7 +23,7 @@
  * DEPENDE DE:
  *   00_SIDEP_CONFIG.js  → SIDEP_CONFIG, nowSIDEP(), uuid()
  *   02_SIDEP_HELPERS.js → getSpreadsheetByName()
- *   14_crearAulas.js    → COL_DEP (índices de columna de MasterDeployments)
+ *   01_SIDEP_TABLES.js  → COL_DEP (§ 6 — índices 0-based de MasterDeployments)
  *   Google Classroom API v1 (habilitar en Editor → ➕ Servicios avanzados)
  *
  * PATRÓN MEMORY-FIRST:

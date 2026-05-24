@@ -171,64 +171,8 @@
  */
 
 
-// ─────────────────────────────────────────────────────────────
-// CONSTANTES DE COLUMNA (0-base)
-// Mantener sincronizadas con los schemas en 00_SIDEP_CONFIG.gs.
-// Si cambia el schema de APERTURA_PLAN o MasterDeployments, actualizar aquí.
-// ─────────────────────────────────────────────────────────────
-
-// ─────────────────────────────────────────────────────────────
-// CONSTANTES DE COLUMNA (0-base)
-// FIX-AUDIT C-4: Estos mapas now se validan en runtime contra los headers
-// reales de Sheets al inicio de planificarDesdeAperturaPlan().
-// Si hay desincronización, el script aborta con un mensaje claro.
-// ─────────────────────────────────────────────────────────────
-
-/**
- * Índices de columna de APERTURA_PLAN (0-base).
- * Espeja CORE_TABLES["APERTURA_PLAN"] en 00_SIDEP_CONFIG.gs.
- */
-var COL_APR = {
-  AperturaID:     0,
-  CohortCode:     1,
-  MomentCode:     2,
-  SubjectCode:    3,
-  ProgramCode:    4,
-  IsTransversal:  5,
-  AperturaStatus: 6,
-  DeploymentID:   7,
-  PlannedBy:      8,
-  PlannedAt:      9,
-  Notes:          10,
-  CreatedAt:      11,
-  CreatedBy:      12,
-  UpdatedAt:      13,
-  UpdatedBy:      14
-};
-
-/**
- * Índices de columna de MasterDeployments (0-base).
- * Espeja CORE_TABLES["MasterDeployments"] en 00_SIDEP_CONFIG.gs.
- */
-var COL_DEP = {
-  DeploymentID:           0,
-  ProgramCode:            1,
-  ModalityCode:           2,
-  CohortCode:             3,
-  MomentCode:             4,
-  SubjectCode:            5,
-  GroupCode:              6,
-  SubjectName:            7,
-  GeneratedNomenclature:  8,
-  GeneratedClassroomName: 9,
-  ClassroomID:            10,
-  ClassroomURL:           11,
-  ScriptStatusCode:       12,
-  CampusCode:             13,
-  CreatedAt:              14,
-  CreatedBy:              15,
-  Notes:                  16
-};
+// COL_APR (APERTURA_PLAN) y COL_DEP (MasterDeployments) definidos en 01_SIDEP_TABLES.js § 6.
+// FIX-AUDIT C-4: validarColumnas_() valida en runtime que los índices coincidan con Sheets.
 
 /**
  * Valida que los índices de COL_APR y COL_DEP coincidan con los headers reales de Sheets.
@@ -252,7 +196,7 @@ function validarColumnas_(hojaApr, hojaDep) {
       errores.push(
         'APERTURA_PLAN col ' + esperado + ': esperada "' + col +
         '", encontrada "' + real + '". ' +
-        '¿Se agregó una columna antes de "' + col + '"? Actualizar COL_APR en este archivo.'
+        '¿Se agregó una columna antes de "' + col + '"? Actualizar COL_APR en 01_SIDEP_TABLES.js § 6.'
       );
     }
   });
@@ -264,7 +208,7 @@ function validarColumnas_(hojaApr, hojaDep) {
       errores.push(
         'MasterDeployments col ' + esperado + ': esperada "' + col +
         '", encontrada "' + real + '". ' +
-        '¿Se agregó una columna antes de "' + col + '"? Actualizar COL_DEP en este archivo.'
+        '¿Se agregó una columna antes de "' + col + '"? Actualizar COL_DEP en 01_SIDEP_TABLES.js § 6.'
       );
     }
   });
