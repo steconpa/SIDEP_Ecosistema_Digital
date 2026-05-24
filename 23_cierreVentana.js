@@ -615,20 +615,56 @@ function menuEjecutarCierreVentana() {
 // ─────────────────────────────────────────────────────────────
 
 /**
+ * Helper — determina si una StudentSubmission está dispensada por el docente.
+ * Una entrega dispensada no bloquea el cierre ni entra al cálculo del Overall Grade.
+ *
+ * Dos patrones soportados:
+ *   1. sub.excused === true
+ *      El docente usó el botón "Excused" de Classroom — la API lo devuelve explícitamente.
+ *
+ *   2. Nota de borrador borrada: último gradeHistory es DRAFT_GRADE_POINTS_EARNED_CHANGE
+ *      sin campo pointsEarned.
+ *      Ocurre cuando el docente ingresó una nota de borrador y luego la eliminó
+ *      (p.ej. para indicar que el estudiante no debe ser evaluado en esa actividad).
+ *      Classroom tampoco incluye estas entregas en el Overall Grade.
+ *
+ * @param {Object} sub — StudentSubmission de la API de Classroom
+ * @returns {boolean} true si la entrega está dispensada y debe ignorarse en los gates
+ */
+function _esDispensada_(sub) {
+  // Patrón 1: campo excused explícito de la API
+  if (sub.excused === true) return true;
+
+  // Patrón 2: nota de borrador borrada
+  // El historial tiene al menos un evento de calificación y el último
+  // es un cambio de nota de borrador sin pointsEarned → nota fue eliminada.
+  if (!sub.submissionHistory) return false;
+  var ghEntradas = sub.submissionHistory.filter(function(h) { return h.gradeHistory; });
+  if (ghEntradas.length === 0) return false;
+  var ultimaGH = ghEntradas[ghEntradas.length - 1].gradeHistory;
+  return ultimaGH.gradeChangeType === "DRAFT_GRADE_POINTS_EARNED_CHANGE" &&
+         (ultimaGH.pointsEarned === undefined || ultimaGH.pointsEarned === null);
+}
+
+
+/**
  * PASO 1 — Gate de entregas.
  * Verifica dos condiciones para que la auto-promoción de notas sea posible:
- *   1. No hay submissions TURNED_IN no excused — el docente retornó todas las entregas.
- *   2. No hay submissions RETURNED sin assignedGrade no excused — el docente calificó todo.
+ *   1. No hay submissions TURNED_IN dispensadas — el docente retornó o dispensó todas.
+ *   2. No hay submissions RETURNED sin assignedGrade dispensadas — el docente calificó todo.
  * Solo evalúa CourseWork PUBLISHED con maxPoints > 0.
  *
- * EXCUSED: la API de Classroom devuelve sub.excused===true para entregas dispensadas.
- *   El docente las marca como "excused" en el gradebook; no bloquean el cierre y
- *   Classroom tampoco las incluye en el cálculo del Overall Grade.
+ * DISPENSADA — una entrega se considera dispensada si cumple cualquiera de:
+ *   a) sub.excused === true  (docente usó el botón "Excused" de Classroom)
+ *   b) El último evento de gradeHistory es DRAFT_GRADE_POINTS_EARNED_CHANGE sin pointsEarned
+ *      (docente borró la nota de borrador — patrón equivalente a "dispensar" sin usar el botón)
+ * En ambos casos Classroom las excluye del Overall Grade y SIDEP no las bloquea.
+ * La detección se delega al helper _esDispensada_(sub).
  *
  * @param {Array} aulasCreated — filas de MasterDeployments (CREATED de la ventana)
  * @returns {{ ok: boolean, sinRetornar: Array, sinCalificar: Array, totalCw: number, totalSubs: number, apiErrores: number }}
- *   sinRetornar: actividades con TURNED_IN no excused (docente no retornó)
- *   sinCalificar: actividades con RETURNED sin assignedGrade no excused (docente no calificó)
+ *   sinRetornar: actividades con TURNED_IN no dispensadas (docente no retornó)
+ *   sinCalificar: actividades con RETURNED sin assignedGrade no dispensadas (sin calificar)
  */
 function _gateRetornadas_(aulasCreated) {
   var sinRetornar  = [];   // TURNED_IN — el docente no retornó
@@ -694,12 +730,10 @@ function _gateRetornadas_(aulasCreated) {
         return;
       }
 
-      // Verificación 1: submissions aún no retornadas por el docente
-      // Se excluyen las marcadas como "excused" en el gradebook de Classroom:
-      // la API las devuelve con state=TURNED_IN y sub.excused===true pero
-      // no bloquean el cierre porque el docente las dispensó intencionalmente.
+      // Verificación 1: submissions aún no retornadas por el docente.
+      // Se excluyen las dispensadas (excused formal o nota de borrador borrada).
       var pendientesRetorno = subs.filter(function(s) {
-        return s.state === "TURNED_IN" && !s.excused;
+        return s.state === "TURNED_IN" && !_esDispensada_(s);
       });
       if (pendientesRetorno.length > 0) {
         sinRetornar.push({
@@ -710,12 +744,11 @@ function _gateRetornadas_(aulasCreated) {
         });
       }
 
-      // Verificación 2: submissions retornadas pero sin nota asignada
-      // El docente puede "retornar" un trabajo sin haber puesto calificación.
-      // En ese caso assignedGrade es null y no hay Overall Grade para ese estudiante.
-      // Las submissions excused también quedan con assignedGrade=null — se excluyen.
+      // Verificación 2: submissions retornadas pero sin assignedGrade.
+      // El docente puede retornar un trabajo sin poner calificación.
+      // Las dispensadas quedan con assignedGrade=null — se excluyen también aquí.
       var returnedSinNota = subs.filter(function(s) {
-        return s.state === "RETURNED" && !s.excused &&
+        return s.state === "RETURNED" && !_esDispensada_(s) &&
                (s.assignedGrade === undefined || s.assignedGrade === null);
       });
       if (returnedSinNota.length > 0) {
